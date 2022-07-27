@@ -4,8 +4,6 @@ project(numero LANGUAGES CXX VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_DEBUG_POSTFIX d)
 
-add_compile_definitions(SEQUENCER_LIB_EXPORT)
-
 add_executable(numero)
 
 set(source_files

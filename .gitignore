@@ -1,3 +1,4 @@
 .clangd/*
+.vscode/*
 cmake_builds/*
 compile_commands.json
