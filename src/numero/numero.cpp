@@ -37,6 +37,29 @@ namespace num
         ltrim(s);
         rtrim(s);
     }
+    
+    static const uint64_t pow10[20] = {
+        1ull,
+        10ull,
+        100ull,
+        1000ull,
+        10000ull,
+        100000ull,
+        1000000ull,
+        10000000ull,
+        100000000ull,
+        1000000000ull,
+        10000000000ull,
+        100000000000ull,
+        1000000000000ull,
+        10000000000000ull,
+        100000000000000ull,
+        1000000000000000ull,
+        10000000000000000ull,
+        100000000000000000ull,
+        1000000000000000000ull,
+        10000000000000000000ull
+    };
 
     /*
      * The following are the distinctly named Latin prefixes used in standard dictionary numbers. Together with a latin
@@ -125,6 +148,30 @@ namespace num
         { "eleven" },
         { "twelve" },
     };
+    
+    static const auto value_to_term = make_bimap<int, std::string_view>({
+        {  0, "zero" },
+        {  1, "one" },
+        {  2, "two" },
+        {  3, "three" },
+        {  4, "four" },
+        {  5, "five" },
+        {  6, "six" },
+        {  7, "seven" },
+        {  8, "eight" },
+        {  9, "nine" },
+        { 10, "ten" },
+        { 11, "eleven" },
+        { 12, "twelve" },
+        { 20, "twenty" },
+        { 30, "thirty" },
+        { 40, "fourty" },
+        { 50, "fifty" },
+        { 60, "sixty" },
+        { 70, "seventy" },
+        { 80, "eighty" },
+        { 90, "ninety" },
+    });
 
     /*
      * The following are distinctly named English decimal power-based numerals. These are special numerals between the
@@ -192,6 +239,7 @@ namespace num
         std::smatch matches;
         std::vector<num::group> groups;
         std::string _numeral = std::string(numeral);
+        uint64_t number = 0;
         auto it = _numeral.cbegin();
 
         std::cout << "Groups:" << std::endl;
@@ -205,8 +253,9 @@ namespace num
             // R-006: Verify uniquely used terms in numeral.
             // R-007: Verify valid terms in numeral.
 
-            uint16_t root_factor = 0;
-            uint16_t short_scale_power = 0;
+            int16_t root_factor = -1;
+            int16_t short_scale_power = -1;
+            int16_t long_scale_power = -1;
 
             if (matches[ILLIARDS_FRAGMENT].matched)
             {
@@ -232,14 +281,37 @@ namespace num
                 group.fragment_str = matches[ONES_FRAGMENT].str();
             }
             
+            std::istringstream iss(group.fragment_str);
+            std::string term;
+            
+            // Deduce fragment number
+            while (iss >> term)
+            {
+                const auto term_value_pair_it = value_to_term.right.find(term);
+                if (term_value_pair_it != value_to_term.right.end())
+                {
+                    group.fragment += term_value_pair_it->second;
+                }
+                else
+                {
+                    const auto message = boost::format("\"%1%\" is not a valid base term") % term;
+                    throw std::invalid_argument(message.str());
+                }
+            }
+            
             // Deduce root factor and power
             if (group.root_str != "thousand" && group.root_str != "")
             {
+                const bool is_illiard = group.suffix_str == "illiard";
+                
                 const auto factor_it = factor_to_root.right.find(group.root_str);
                 if (factor_it != factor_to_root.right.end())
                 {
                     root_factor = factor_it->second;
                     short_scale_power = 3 * root_factor + 3;
+                    long_scale_power = 6 * root_factor;
+                    
+                    if (is_illiard) long_scale_power += 3;
                 }
                 else
                 {
@@ -261,19 +333,31 @@ namespace num
                         throw std::invalid_argument(message.str());
                     }
                 }
+                
+                number += group.fragment * pow10[short_scale_power];
             }
-            
-            // TODO: Parse fragment
+            else if (group.root_str == "thousand")
+            {
+                number += group.fragment * 1000;
+            }
+            else
+            {
+                number += group.fragment;
+            }
 
-            std::cout << "      fragment: " << group.fragment_str << std::endl;
-            std::cout << "      root: " << group.root_str << std::endl;
-            std::cout << "      suffix: " << group.suffix_str << std::endl;
+            std::cout << "      fragment string: " << (group.fragment_str.empty() ? "-" : group.fragment_str) << std::endl;
+            std::cout << "      fragment: " << group.fragment << std::endl;
+            std::cout << "      root string: " << (group.root_str.empty() ? "-" : group.root_str) << std::endl;
+            std::cout << "      suffix string: " << (group.suffix_str.empty() ? "-" : group.suffix_str) << std::endl;
             std::cout << "      root factor: " << root_factor << std::endl;
             std::cout << "      short scale power: " << short_scale_power << std::endl;
+            std::cout << "      long scale power: " << long_scale_power << std::endl;
 
             groups.push_back(group);
             it = matches[0].second;
         }
+        
+        std::cout << "Number: " << number << std::endl;
 
         return groups;
     }
