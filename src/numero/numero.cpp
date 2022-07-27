@@ -2,10 +2,12 @@
 #include <stdexcept>
 #include <vector>
 #include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <sstream>
 #include <regex>
+#include <limits>
 
 #include <boost/bimap.hpp>
 #include <boost/format.hpp>
@@ -90,7 +92,7 @@ namespace num
         auto it = value_to_prefix.right.begin();
         for (; it != value_to_prefix.right.end(); it++)
         {
-            if (subject.starts_with(it->first))
+            if (subject.substr(it->first.size()) == it->first)
                 return it;
         }
         return value_to_prefix.right.end();
@@ -240,9 +242,15 @@ namespace num
         std::vector<num::group> groups;
         std::string _numeral = std::string(numeral);
         uint64_t number = 0;
+        uint16_t last_power = std::numeric_limits<uint16_t>::max();
+        std::set<uint16_t> used_powers;
         auto it = _numeral.cbegin();
 
         std::cout << "Groups:" << std::endl;
+
+        // TODO: Check beforehand how many groups there are
+        // TODO: Check that the numeral "zero" must only be in the first group of one group; anywhere else causes an
+        // invalid syntax exception.
         
         while (std::regex_search(it, _numeral.cend(), matches, group_pattern))
         {
@@ -283,6 +291,10 @@ namespace num
             
             std::istringstream iss(group.fragment_str);
             std::string term;
+
+            bool has_ones_term = false;
+            bool has_tens_term = false;
+            bool has_hundreds_term = false;
             
             // Deduce fragment number
             while (iss >> term)
@@ -290,8 +302,43 @@ namespace num
                 const auto term_value_pair_it = value_to_term.right.find(term);
                 if (term_value_pair_it != value_to_term.right.end())
                 {
+                    const auto value = term_value_pair_it->second;
+                    const bool is_hundreds_term = value >= 100;
+                    const bool is_tens_term = value % 10 == 0 && value != 0;
+                    const bool is_ones_term = value <= 12 && value != 10 && value != 0;
+
+                    // R-006: Verify uniquely used terms in numeral.
+                    if (is_ones_term && has_ones_term)
+                    {
+                        const auto message = boost::format("group term \"%1%\": trying to add ones term \"%2%\" but "
+                                                           "ones term was already set before")
+                                                           % matches.str() % term;
+                        throw std::logic_error(message.str());
+                    }
+                    // R-006: Verify uniquely used terms in numeral.
+                    if (is_tens_term && has_tens_term)
+                    {
+                        const auto message = boost::format("group term \"%1%\": trying to add tens term \"%2%\" but "
+                                                           "tens term was already set before")
+                                                           % matches.str() % term;
+                        throw std::logic_error(message.str());
+                    }
+                    // R-006: Verify uniquely used terms in numeral.
+                    if (is_hundreds_term && has_hundreds_term)
+                    {
+                        const auto message = boost::format("group term \"%1%\": trying to add hundreds term \"%2%\" but "
+                                                           "hundreds term was already set before")
+                                                           % matches.str() % term;
+                        throw std::logic_error(message.str());
+                    }
+
+                    has_ones_term |= is_ones_term;
+                    has_tens_term |= is_tens_term;
+                    has_hundreds_term |= is_hundreds_term;
+
                     group.fragment += term_value_pair_it->second;
                 }
+                // R-007: Verify valid terms in numeral.
                 else
                 {
                     const auto message = boost::format("\"%1%\" is not a valid base term") % term;
@@ -310,7 +357,6 @@ namespace num
                     root_factor = factor_it->second;
                     short_scale_power = 3 * root_factor + 3;
                     long_scale_power = 6 * root_factor;
-                    
                     if (is_illiard) long_scale_power += 3;
                 }
                 else
@@ -320,16 +366,24 @@ namespace num
                     {
                         const auto actual_prefix = prefix_value_pair_it->first;
                         const auto actual_root = group.root_str.substr(actual_prefix.size());
+                        
                         const auto factor_it = factor_to_root.right.find(actual_root);
                         if (factor_it != factor_to_root.right.end())
                         {
                             root_factor = factor_it->second + prefix_value_pair_it->second;
                             short_scale_power = 3 * root_factor + 3;
                         }
+                        // R-007: Verify valid terms in numeral.
+                        else
+                        {
+                            const auto message = boost::format("\"%1%\" is not a valid root term") % actual_root;
+                            throw std::invalid_argument(message.str());
+                        }
                     }
+                    // R-007: Verify valid terms in numeral.
                     else
                     {
-                        const auto message = boost::format("\"%1%\" is not a valid root prefix") % group.root_str;
+                        const auto message = boost::format("\"%1%\" is not a valid root prefix term") % group.root_str;
                         throw std::invalid_argument(message.str());
                     }
                 }
@@ -344,6 +398,26 @@ namespace num
             {
                 number += group.fragment;
             }
+
+            // R-006: Verify uniquely used terms in numeral.
+            if (used_powers.count(short_scale_power))
+            {
+                // TODO: Write a more readable and clear exception message.
+                const auto message = boost::format("short scale power %1% was already set before")
+                                                   % short_scale_power;
+                throw std::logic_error(message.str());
+            }
+
+            // R-005: Verify correct order of terms in numeral.
+            if (short_scale_power > last_power)
+            {
+                const auto message = boost::format("\"%1%\" has higher magnitude than a term that came before")
+                                                   % matches.str();
+                throw std::logic_error(message.str());
+            }
+
+            last_power = short_scale_power;
+            used_powers.insert(short_scale_power);
 
             std::cout << "      fragment string: " << (group.fragment_str.empty() ? "-" : group.fragment_str) << std::endl;
             std::cout << "      fragment: " << group.fragment << std::endl;
@@ -454,9 +528,9 @@ int main(int argc, const char** argv)
     {
         output = num::convert(input);
     }
-    catch(std::invalid_argument const &ex)
+    catch(std::exception const &ex)
     {
-        std::cout << "Invalid argument: " << ex.what() << std::endl;
+        std::cout << "Exception: " << ex.what() << std::endl;
     }
     
     std::cout << (input_is_number ? "Numeral: " : "Number: ") << output << std::endl;
