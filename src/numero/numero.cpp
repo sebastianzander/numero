@@ -83,8 +83,9 @@ namespace num
     });
     
     /*
-     * Finds the prefix that the string \param subject starts with.
-     * Returns the iterator of a prefix-value pair in value_to_prefix.right if found; value_to_prefix.right.end() if
+     * Finds the prefix that the subject starts with.
+     * \param subject the subject to find the prefix for.
+     * \returns the iterator of a prefix-value pair in value_to_prefix.right if found; value_to_prefix.right.end() if
      * no prefix could be found.
      */
     auto find_prefix(const std::string_view &subject)
@@ -151,28 +152,28 @@ namespace num
         { "twelve" },
     };
     
-    static const auto value_to_term = make_bimap<int, std::string_view>({
-        {  0, "zero" },
-        {  1, "one" },
-        {  2, "two" },
-        {  3, "three" },
-        {  4, "four" },
-        {  5, "five" },
-        {  6, "six" },
-        {  7, "seven" },
-        {  8, "eight" },
-        {  9, "nine" },
-        { 10, "ten" },
-        { 11, "eleven" },
-        { 12, "twelve" },
-        { 20, "twenty" },
-        { 30, "thirty" },
-        { 40, "fourty" },
-        { 50, "fifty" },
-        { 60, "sixty" },
-        { 70, "seventy" },
-        { 80, "eighty" },
-        { 90, "ninety" },
+    static const auto value_to_term = make_bimap<std::string_view, std::string_view>({
+        {  "0", "zero" },
+        {  "1", "one" },
+        {  "2", "two" },
+        {  "3", "three" },
+        {  "4", "four" },
+        {  "5", "five" },
+        {  "6", "six" },
+        {  "7", "seven" },
+        {  "8", "eight" },
+        {  "9", "nine" },
+        { "10", "ten" },
+        { "11", "eleven" },
+        { "12", "twelve" },
+        { "20", "twenty" },
+        { "30", "thirty" },
+        { "40", "fourty" },
+        { "50", "fifty" },
+        { "60", "sixty" },
+        { "70", "seventy" },
+        { "80", "eighty" },
+        { "90", "ninety" },
     });
 
     /*
@@ -185,6 +186,18 @@ namespace num
         { 2, "hundred" },
         { 3, "thousand" },
     };
+    
+    static const auto multiplicative_terms = make_bimap<int, std::string_view>({
+        {     100, "hundred" },
+        {    1000, "thousand" },
+        { 1000000, "million" }
+    });
+
+    static const auto multiplicative_shifts = make_bimap<int, std::string_view>({
+        { 2, "hundred" },
+        { 3, "thousand" },
+        { 4, "myriad" }
+    });
 
     /*
      * Group boundary words used to split a numeral into multiple group numerals. See `split_numeral` for more details.
@@ -205,6 +218,105 @@ namespace num
         uint16_t fragment = 0;
         uint16_t factor_power = 0;
     };
+
+    /*
+     * Finds the additive value for the given term.
+     * \param term the term to find the additive value for.
+     * \returns the additive value, a value greater than 0 if term is valid; 0 if the term is invalid.
+     * \throws std::invalid_argument exception if the term does not resolve to an additive value.
+     */
+    std::string_view find_additive_value(const std::string_view &term)
+    {
+        const auto term_value_pair_it = value_to_term.right.find(term);
+        if (term_value_pair_it != value_to_term.right.end())
+        {
+            return term_value_pair_it->second;
+        }
+        else
+        {
+            const auto message = boost::format("\"%1%\" is not a valid term") % term;
+            throw std::invalid_argument(message.str());
+        }
+
+        return {};
+    }
+
+    /*
+     * Finds the multiplicative shift of places dictated by the given term, e.g. the term "thousand" returns 3 as multi-
+     * plying by 1,000 shifts the multiplicand 3 places to the left.
+     * \param term the term to find the multiplicative shift for.
+     * \returns the multiplicative shift, a value greater than 0 if term is valid; 0 if the term is invalid.
+     * \throws std::invalid_argument exception if the term does not resolve to a multiplicative shift.
+     */
+    uint32_t find_multiplicative_shift(const std::string_view &term)
+    {
+        static const std::regex latin_root_pattern("(.*)(illion|illiard)$");
+
+        std::string _term = std::string(term);
+        std::smatch matches;
+
+        if (std::regex_search(_term.cbegin(), _term.cend(), matches, latin_root_pattern))
+        {
+            const auto &root_base = matches[1].str();
+            const auto &root_suffix = matches[2].str();
+
+            if (root_suffix == "illiard")
+            {
+                const auto message = boost::format("long scale number system is currently not supported") % term;
+                throw std::invalid_argument(message.str());
+            }
+
+            const auto factor_it = factor_to_root.right.find(root_base);
+            if (factor_it != factor_to_root.right.end())
+            {
+                const auto root_factor = factor_it->second;
+                return 3 * root_factor + 3;
+            }
+            else
+            {
+                const auto prefix_value_pair_it = find_prefix(root_base);
+                if (prefix_value_pair_it != value_to_prefix.right.end())
+                {
+                    const auto actual_prefix = prefix_value_pair_it->first;
+                    const auto actual_root = root_base.substr(actual_prefix.size());
+                    
+                    const auto factor_it = factor_to_root.right.find(actual_root);
+                    if (factor_it != factor_to_root.right.end())
+                    {
+                        const auto root_factor = factor_it->second + prefix_value_pair_it->second;
+                        return 3 * root_factor + 3;
+                    }
+                    // R-007: Verify valid terms in numeral.
+                    else
+                    {
+                        const auto message = boost::format("\"%1%\" is not a valid root term") % actual_root;
+                        throw std::invalid_argument(message.str());
+                    }
+                }
+                // R-007: Verify valid terms in numeral.
+                else
+                {
+                    const auto message = boost::format("\"%1%\" is not a valid root term") % root_base;
+                    throw std::invalid_argument(message.str());
+                }
+            }
+        }
+        else
+        {
+            const auto multiplicative_shift_it = multiplicative_shifts.right.find(term);
+            if (multiplicative_shift_it != multiplicative_shifts.right.end())
+            {
+                return multiplicative_shift_it->second;
+            }
+            else
+            {
+                const auto message = boost::format("\"%1%\" is not a valid term") % term;
+                throw std::invalid_argument(message.str());
+            }
+        }
+
+        return 0;
+    }
 
     /*
      * Splits a numeral into multiple group numerals. Each group numeral is then individually but equally converted to
@@ -302,7 +414,7 @@ namespace num
                 const auto term_value_pair_it = value_to_term.right.find(term);
                 if (term_value_pair_it != value_to_term.right.end())
                 {
-                    const auto value = term_value_pair_it->second;
+                    const auto value = 0;
                     const bool is_hundreds_term = value >= 100;
                     const bool is_tens_term = value % 10 == 0 && value != 0;
                     const bool is_ones_term = value <= 12 && value != 10 && value != 0;
@@ -336,7 +448,7 @@ namespace num
                     has_tens_term |= is_tens_term;
                     has_hundreds_term |= is_hundreds_term;
 
-                    group.fragment += term_value_pair_it->second;
+                    //group.fragment += term_value_pair_it->second;
                 }
                 // R-007: Verify valid terms in numeral.
                 else
@@ -362,7 +474,7 @@ namespace num
                 else
                 {
                     const auto prefix_value_pair_it = find_prefix(group.root_str);
-                    if ( prefix_value_pair_it != value_to_prefix.right.end() )
+                    if (prefix_value_pair_it != value_to_prefix.right.end())
                     {
                         const auto actual_prefix = prefix_value_pair_it->first;
                         const auto actual_root = group.root_str.substr(actual_prefix.size());
@@ -466,21 +578,141 @@ namespace num
         return success;
     }
 
-    std::string_view to_number(const std::string_view &numeral)
+    void merge_places(const std::string &source, std::string &target)
+    {
+        if (target.empty())
+        {
+            target = source;
+            return;
+        }
+
+        const auto original_target = std::string(target);
+        auto s = source.rbegin();
+        auto t = target.rbegin();
+        
+        for (int place = 1; s != source.rend() && t != target.rend(); s++, t++, place++)
+        {
+            if (*s != '0' && *t != '0')
+            {
+                const auto message = boost::format("cannot merge %1% and %2% at place %3%")
+                                                   % original_target % source % place;
+                throw std::logic_error(message.str());
+            }
+            else if (*s != '0')
+                *t = *s;
+        }
+    }
+
+    void shift_places(const uint32_t places_count, std::string &target)
+    {
+        target.insert(target.end(), places_count, '0');
+    }
+
+    void add_thousands_separators(std::string &target)
     {
         std::stringstream ss;
-
-        bool negative = numeral.rfind("negative ", 0) == 0 || numeral.rfind("minus ", 0) == 0;
-        auto groups = num::split_numeral(numeral);
+        const auto offset = target.size() % 3;
         
+        for (std::size_t i = 0; i < target.size(); i++)
+        {
+            if (i > 0 && i % 3 == offset) ss << ",";
+            ss << target[i];
+        }
+
+        target = ss.str();
+    }
+
+    std::string to_number(const std::string_view &numeral)
+    {
+        static const std::regex split_pattern("[\\s-]+");
+
+        const auto starts_with_negative = numeral.rfind("negative ", 0) == 0;
+        const auto starts_with_minus = numeral.rfind("minus ", 0) == 0;
+        
+        bool negative = starts_with_negative || starts_with_minus;
+            
+        std::string _numeral = std::string(numeral);
+        if (starts_with_negative) _numeral.erase(0, 9);
+        else if (starts_with_minus) _numeral.erase(0, 6);
+
+        auto it = std::sregex_token_iterator(_numeral.begin(), _numeral.end(), split_pattern, -1);
+        
+        std::vector<std::string> groups;
+        std::string current_group;
+        uint64_t additive_value = 0;
+        uint64_t multiplicative_value = 1;
+        uint64_t last_multiplicative_shift = 1;
+        bool last_term_multiplicative = false;
+
+        for (; it != std::sregex_token_iterator(); it++)
+        {
+            const auto match = *it;
+            const auto term = match.str();
+            std::exception_ptr find_additive_value_exception = nullptr;
+            std::exception_ptr find_multiplicative_shift_exception = nullptr;
+
+            std::string current_additive_value;
+            uint32_t current_multiplicative_shift = 0;
+
+            try {
+                current_additive_value = find_additive_value(term);
+            } catch (const std::exception &e) {
+                find_additive_value_exception = std::current_exception();
+            }
+
+            try {
+                current_multiplicative_shift = find_multiplicative_shift(term);
+            } catch (const std::exception &e) {
+                find_multiplicative_shift_exception = std::current_exception();
+            }
+
+            if (find_additive_value_exception && find_multiplicative_shift_exception)
+                std::rethrow_exception(find_additive_value_exception);
+
+            if (!find_additive_value_exception)
+            {
+                if (last_term_multiplicative && last_multiplicative_shift >= 3)
+                {
+                    groups.push_back(current_group);
+                    
+                    //std::cout << "Group number: " << current_group << std::endl;
+                    //std::cout << "New group" << std::endl;
+                    
+                    current_group = "";
+                    additive_value = 0;
+                    multiplicative_value = 1;
+                }
+
+                //std::cout << "Term: " << term << std::endl;
+                //std::cout << "  Additive value: " << current_additive_value << std::endl;
+                last_term_multiplicative = false;
+
+                merge_places(current_additive_value, current_group);
+            }
+            else
+            {
+                //std::cout << "Term: " << term << std::endl;
+                //std::cout << "  Multiplicative value: 10^" << current_multiplicative_shift << std::endl;
+                last_term_multiplicative = true;
+                last_multiplicative_shift = current_multiplicative_shift;
+
+                shift_places(current_multiplicative_shift, current_group);
+            }
+        }
+
+        groups.push_back(current_group);
+
+        std::string result;
+
+        for (const auto &group : groups)
+            merge_places(group, result);
+        
+        add_thousands_separators(result);
+
         if (negative)
-            ss << "-";
+            result.insert(0, 1, '-');
 
-        for (auto &group : groups)
-            if (num::to_number(group))
-                ss << group.value_str;
-
-        return ss.str();
+        return result;
     }
 
     bool to_number(const std::string_view &numeral, uint64_t &out_value)
@@ -499,12 +731,12 @@ namespace num
         return is_number(std::string(input));
     }
 
-    std::string_view to_numeral(const std::string_view &number)
+    std::string to_numeral(const std::string_view &number)
     {
         return {};
     }
 
-    std::string_view convert(const std::string_view &input)
+    std::string convert(const std::string_view &input)
     {
         return num::is_number(input) ? num::to_numeral(input) : num::to_number(input);
     }
@@ -519,7 +751,7 @@ int main(int argc, const char** argv)
     const bool use_ands_in_numerals = true;
 
     std::string output;
-    const auto input = std::string_view(argc > 1 ? argv[1] : "seven hundred four million eighty three thousand eleven");
+    const auto input = std::string_view(argc > 1 ? argv[1] : "seven hundred four million eighty-three thousand eleven");
     const auto input_is_number = num::is_number(input);
     
     std::cout << (input_is_number ? "Number: " : "Numeral: ") << input << std::endl;
