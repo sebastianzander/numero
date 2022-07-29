@@ -93,7 +93,7 @@ namespace num
         auto it = value_to_prefix.right.begin();
         for (; it != value_to_prefix.right.end(); it++)
         {
-            if (subject.substr(it->first.size()) == it->first)
+            if (subject.substr(0, it->first.size()) == it->first)
                 return it;
         }
         return value_to_prefix.right.end();
