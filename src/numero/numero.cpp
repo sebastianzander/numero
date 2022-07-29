@@ -179,11 +179,14 @@ namespace num
     /*
      * Finds the additive value for the given term.
      * \param term the term to find the additive value for.
+     * \param max_allowed_digits the number of digits allowed for that term at its place in its numeral.
      * \param allow_numbers_greater_99 whether to allow numerics that are greater than 99.
      * \returns the additive value, a value greater than 0 if term is valid; 0 if the term is invalid.
      * \throws std::invalid_argument exception if the term does not resolve to an additive value.
      */
-    std::string_view find_additive_value(const std::string_view &term, bool allow_numbers_greater_99)
+    std::string_view find_additive_value(const std::string_view &term,
+                                         int max_allowed_digits,
+                                         bool allow_numbers_greater_99)
     {
         static const std::regex number_pattern("\\d+");
 
@@ -206,7 +209,14 @@ namespace num
         const auto term_value_pair_it = value_to_term.right.find(term);
         if (term_value_pair_it != value_to_term.right.end())
         {
-            return term_value_pair_it->second;
+            const auto value = term_value_pair_it->second;
+            if (value.size() > max_allowed_digits)
+            {
+                const auto message = boost::format("\"%1%\" is not allowed at this place") % term;
+                throw std::invalid_argument(message.str());
+            }
+
+            return value;
         }
         else
         {
@@ -331,15 +341,15 @@ namespace num
         target = ss.str();
     }
 
-    std::string to_number(const std::string_view &numeral, const conversion_options_t &conversion_options)
+    std::string parse_integer_number(const std::string_view &integer, const conversion_options_t &conversion_options)
     {
         static const std::regex split_pattern("[\\s-]+");
 
-        if (numeral.empty())
-            throw std::invalid_argument("the numeral must not be empty");
-        
+        if (integer.empty())
+            return {};
+
         bool negative = false;
-        std::string _numeral = std::string(numeral);
+        std::string _numeral = std::string(integer);
 
         auto it = std::sregex_token_iterator(_numeral.begin(), _numeral.end(), split_pattern, -1);
         
@@ -372,7 +382,7 @@ namespace num
             uint32_t current_multiplicative_shift = 0;
 
             try {
-                current_additive_value = find_additive_value(term, groups.empty() && current_group.empty());
+                current_additive_value = find_additive_value(term, 3, groups.empty() && current_group.empty());
             } catch (const std::exception &e) {
                 find_additive_value_exception = std::current_exception();
             }
@@ -439,6 +449,71 @@ namespace num
             result.insert(0, 1, '-');
 
         return result;
+    }
+
+    std::string parse_decimal_number(const std::string_view &decimal, const conversion_options_t &conversion_options)
+    {
+        static const std::regex split_pattern("[\\s-]+");
+
+        if (decimal.empty())
+            return {};
+
+        std::stringstream ss;
+        std::string _decimal = std::string(decimal);
+
+        auto it = std::sregex_token_iterator(_decimal.begin(), _decimal.end(), split_pattern, -1);
+
+        for (; it != std::sregex_token_iterator(); it++)
+        {
+            const auto match = *it;
+            const auto &digit = match.str();
+            ss << find_additive_value(digit, 1, true);
+        }
+
+        return ss.str();
+    }
+
+    std::string to_number(const std::string_view &numeral, const conversion_options_t &conversion_options)
+    {
+        static const std::regex split_pattern(" ?point ");
+
+        if (numeral.empty())
+            throw std::invalid_argument("the numeral must not be empty");
+        
+        std::string _numeral = std::string(numeral);
+
+        auto it = std::sregex_token_iterator(_numeral.begin(), _numeral.end(), split_pattern, -1);
+        
+        std::vector<std::string> parts;
+
+        for (; it != std::sregex_token_iterator(); it++)
+        {
+            const auto match = *it;
+            const auto part = match.str();
+            parts.push_back(part);
+        }
+
+        if (parts.size() >= 3)
+            throw std::logic_error("\"point\" is only allowed once in a numeral as a decimal separator");
+
+        auto number = parse_integer_number(parts[0], conversion_options);
+
+        if (parts.size() == 2)
+        {
+            const auto parsed_decimal = parse_decimal_number(parts[1], conversion_options);
+
+            if (number.empty())
+                number = "0";
+
+            number.insert(number.end(), conversion_options.decimal_separator_symbol);
+
+            if (parsed_decimal.empty())
+                number += "0";
+            else
+                number += parsed_decimal;
+        }
+
+        return number;
     }
 
     bool is_number(const std::string &input)
