@@ -11,6 +11,7 @@
 
 #include <boost/bimap.hpp>
 #include <boost/format.hpp>
+#include <boost/program_options.hpp>
 
 namespace num
 {
@@ -39,6 +40,29 @@ namespace num
         ltrim(s);
         rtrim(s);
     }
+
+    /*
+     * Types of numeral naming systems.
+     */
+    enum class naming_system_t
+    {
+        undefined = 0,
+        short_scale,
+        long_scale
+    };
+
+    /*
+     * Options used to guide conversion between numbers and numerals.
+     */
+    struct conversion_options_t
+    {
+        naming_system_t naming_system = naming_system_t::short_scale;
+        std::string_view language = "en-us";
+        bool use_scientific_notation = false;
+        bool use_thousands_separators = true;
+        char thousands_separator_symbol = ',';
+        char decimal_separator_symbol = '.';
+    };
 
     /*
      * The following are the distinctly named Latin prefixes used in standard dictionary numbers. Together with a latin
@@ -187,10 +211,7 @@ namespace num
             const auto &root_suffix = matches[2].str();
 
             if (root_suffix == "illiard")
-            {
-                const auto message = boost::format("long scale number system is currently not supported") % term;
-                throw std::invalid_argument(message.str());
-            }
+                throw std::invalid_argument("long scale number system is currently not supported");
 
             const auto factor_it = factor_to_root.right.find(root_base);
             if (factor_it != factor_to_root.right.end())
@@ -274,29 +295,26 @@ namespace num
         target.insert(target.end(), places_count, '0');
     }
 
-    void add_thousands_separators(std::string &target)
+    void add_thousands_separators(std::string &target, const char thousands_separator_symbol)
     {
         std::stringstream ss;
         const auto offset = target.size() % 3;
         
         for (std::size_t i = 0; i < target.size(); i++)
         {
-            if (i > 0 && i % 3 == offset) ss << ",";
+            if (i > 0 && i % 3 == offset) ss << thousands_separator_symbol;
             ss << target[i];
         }
 
         target = ss.str();
     }
 
-    std::string to_number(const std::string_view &numeral)
+    std::string to_number(const std::string_view &numeral, const conversion_options_t &conversion_options)
     {
         static const std::regex split_pattern("[\\s-]+");
 
         if (numeral.empty())
-        {
-            const auto message = boost::format("the numeral must not be empty");
-            throw std::invalid_argument(message.str());
-        }
+            throw std::invalid_argument("the numeral must not be empty");
         
         bool negative = false;
         std::string _numeral = std::string(numeral);
@@ -383,10 +401,7 @@ namespace num
         }
 
         if (groups.empty() && current_group.empty() && negative)
-        {
-            const auto message = boost::format("the numeral must not be empty");
-            throw std::invalid_argument(message.str());
-        }
+            throw std::invalid_argument("the numeral must not be empty");
 
         groups.push_back(current_group);
 
@@ -395,7 +410,8 @@ namespace num
         for (const auto &group : groups)
             merge_places(group, result);
         
-        add_thousands_separators(result);
+        if (conversion_options.use_thousands_separators)
+            add_thousands_separators(result, conversion_options.thousands_separator_symbol);
 
         if (negative)
             result.insert(0, 1, '-');
@@ -414,41 +430,141 @@ namespace num
         return is_number(std::string(input));
     }
 
-    std::string to_numeral(const std::string_view &number)
+    std::string to_numeral(const std::string_view &number, const conversion_options_t &conversion_options)
     {
         return {};
     }
 
-    std::string convert(const std::string_view &input)
+    std::string convert(const std::string_view &input, const conversion_options_t &conversion_options)
     {
-        return num::is_number(input) ? num::to_numeral(input) : num::to_number(input);
+        return num::is_number(input) ? num::to_numeral(input, conversion_options) : 
+                                       num::to_number(input, conversion_options);
+    }
+}
+
+void process_program_options(const boost::program_options::variables_map &vm,
+                             num::conversion_options_t &conversion_options)
+{
+    using namespace boost::program_options;
+
+    if (vm.count("naming-system"))
+    {
+        const auto &naming_system = vm["naming-system"].as<std::string>();
+        if (naming_system == "short-scale")
+            conversion_options.naming_system = num::naming_system_t::short_scale;
+        else if (naming_system == "long-scale")
+            conversion_options.naming_system = num::naming_system_t::long_scale;
+        else
+        {
+            const auto message = boost::format("\"%1%\" is not a valid numeral naming system") % naming_system;
+            throw std::logic_error(message.str());
+        }
+    }
+    
+    if (vm.count("language"))
+        conversion_options.language = vm["language"].as<std::string>();
+    
+    if (vm.count("use-scientific-notation"))
+        conversion_options.use_scientific_notation = vm["use-scientific-notation"].as<bool>();
+    
+    if (vm.count("use-thousands-separator"))
+        conversion_options.use_thousands_separators = vm["use-thousands-separator"].as<bool>();
+    
+    if (vm.count("thousands-separator-symbol"))
+    {
+        conversion_options.thousands_separator_symbol = vm["thousands-separator-symbol"].as<char>();
+        if (conversion_options.thousands_separator_symbol == '.' )
+            conversion_options.decimal_separator_symbol = ',';
+    }
+    
+    if (vm.count("decimal-separator-symbol"))
+    {
+        conversion_options.decimal_separator_symbol = vm["decimal-separator-symbol"].as<char>();
+        if (conversion_options.decimal_separator_symbol == conversion_options.thousands_separator_symbol)
+            throw std::invalid_argument("Error: Thousands and decimal separators have to be different");
     }
 }
 
 int main(int argc, const char** argv)
 {
-    const auto language = std::string_view("en-us");
-    const bool use_short_scale = true;
-    const bool use_scientific_notation_if_practical = true;
-    const bool use_spaces_in_numerals = true;
-    const bool use_ands_in_numerals = true;
+    using namespace boost::program_options;
 
-    std::string output;
-    const auto input = std::string_view(argc > 1 ? argv[1] : "seven hundred four million eighty-three thousand eleven");
-    const auto input_is_number = num::is_number(input);
-    
-    std::cout << (input_is_number ? "Number: " : "Numeral: ") << input << std::endl;
-    
+    num::conversion_options_t conversion_options;
+
+    options_description desc("Options");
+    desc.add_options()
+        ( "help,h",
+          "Help and usage information" )
+        ( "input,i", value<std::vector<std::string>>()->multitoken(),
+          "Input value (either number or numeral)" )
+        ( "naming-system", value<std::string>()->default_value("short-scale"),
+          "Numeral naming system (either \"short-scale\" or \"long-scale\"" )
+        ( "language,l", value<std::string>()->default_value("en-us"),
+          "ISO 639-1 standard language code for conversion to numerals" )
+        ( "scientific-notation", value<bool>()->default_value(false),
+          "Uses scientific notation if applicable in conversion to numbers" )
+        ( "use-thousands-separator", value<bool>()->default_value(true),
+          "Uses thousands separators in conversion to numbers" )
+        ( "thousands-separator-symbol", value<char>(),
+          "Thousands separator symbol" )
+        ( "decimal-separator-symbol", value<char>(),
+          "Decimal separator symbol" );
+
+    positional_options_description pos_desc;
+    pos_desc.add("input", -1);
+
+    std::vector<std::string> inputs;
+
     try
     {
-        output = num::convert(input);
+        command_line_parser parser(argc, argv);
+        parser.options(desc).positional(pos_desc).allow_unregistered();
+        parsed_options parsed_options = parser.run();
+        
+        variables_map vm;
+        store(parsed_options, vm);
+        notify(vm);
+
+        if (vm.count("help"))
+        {
+            std::cout << "Usage:" << std::endl <<
+                "  numero [options] <input-1> [<input-2>] [\"<input-3 with spaces\"]" << std::endl << std::endl << 
+                desc << std::endl;
+            return EXIT_FAILURE;
+        }
+
+        if (vm.count("input"))
+        {
+            inputs = vm["input"].as<std::vector<std::string>>();
+        }
+        
+        process_program_options(vm, conversion_options);
     }
-    catch(std::exception const &ex)
+    catch (const error &ex)
     {
-        std::cout << "Exception: " << ex.what() << std::endl;
+        std::cerr << "Error: " << ex.what() << std::endl;
+        return EXIT_FAILURE;
     }
-    
-    std::cout << (input_is_number ? "Numeral: " : "Number: ") << output << std::endl;
+
+    for (const auto &input : inputs)
+    {
+        std::string output;
+        const auto input_is_number = num::is_number(input);
+        
+        std::cout << (input_is_number ? "Number: " : "Numeral: ") << input << std::endl;
+        
+        try
+        {
+            output = num::convert(input, conversion_options);
+        }
+        catch (std::exception const &ex)
+        {
+            std::cout << "Error: " << ex.what() << std::endl;
+            return EXIT_FAILURE;
+        }
+        
+        std::cout << (input_is_number ? "Numeral: " : "Number: ") << output << std::endl << std::endl;
+    }
     
     return EXIT_SUCCESS;
 }
