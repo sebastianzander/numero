@@ -39,29 +39,6 @@ namespace num
         ltrim(s);
         rtrim(s);
     }
-    
-    static const uint64_t pow10[20] = {
-        1ull,
-        10ull,
-        100ull,
-        1000ull,
-        10000ull,
-        100000ull,
-        1000000ull,
-        10000000ull,
-        100000000ull,
-        1000000000ull,
-        10000000000ull,
-        100000000000ull,
-        1000000000000ull,
-        10000000000000ull,
-        100000000000000ull,
-        1000000000000000ull,
-        10000000000000000ull,
-        100000000000000000ull,
-        1000000000000000000ull,
-        10000000000000000000ull
-    };
 
     /*
      * The following are the distinctly named Latin prefixes used in standard dictionary numbers. Together with a latin
@@ -70,7 +47,7 @@ namespace num
      * Example of a standard dictionary number: trevigintillion (23-illion) => short scale: 10^(3*23+3), long scale:
      * 10^(6*23)
      */
-    static const auto value_to_prefix = make_bimap<int, std::string_view>({
+    const auto value_to_prefix = make_bimap<int, std::string_view>({
         { 1, "un" },
         { 2, "duo" },
         { 3, "tre" },
@@ -83,23 +60,6 @@ namespace num
     });
     
     /*
-     * Finds the prefix that the subject starts with.
-     * \param subject the subject to find the prefix for.
-     * \returns the iterator of a prefix-value pair in value_to_prefix.right if found; value_to_prefix.right.end() if
-     * no prefix could be found.
-     */
-    auto find_prefix(const std::string_view &subject)
-    {
-        auto it = value_to_prefix.right.begin();
-        for (; it != value_to_prefix.right.end(); it++)
-        {
-            if (subject.substr(0, it->first.size()) == it->first)
-                return it;
-        }
-        return value_to_prefix.right.end();
-    }
-    
-    /*
      * The following are distinctly named Latin roots used in standard dictionary numbers. They are stored without the
      * Latin suffixes "-illion" and "-illiard".
      * The "-illion" suffixes follow the formula 10^(3*x+3) in short scale and 10^(6*x) in long scale, where x is the
@@ -109,7 +69,7 @@ namespace num
      * nine hundred ninety nine novemnonagintillion nine hundred ninety nine octononagintillion nine hundred ninety...".
      * The smallest number equals the biggest number, only that it begins with a minus sign/the word "negative".
      */
-    static const auto factor_to_root = make_bimap<int, std::string_view>({
+    const auto factor_to_root = make_bimap<int, std::string_view>({
         {   1, "m" },
         {   2, "b" },
         {   3, "tr" },
@@ -132,27 +92,9 @@ namespace num
     });
 
     /*
-     * The following are distinctly named English unit numerals including irregular forms (if there is more than one 
-     * numeral per line). Irregular forms are primarily used in combination with either "-teen" or "-ty", e.g. "fifty".
-     * "teen" and "ty" are itself stored as irregular forms of "ten".
+     * The following are distinctly named English base numerals and their number value as a string.
      */
-    static const std::vector<std::vector<std::string_view>> units = {
-        { "zero" },
-        { "one" },
-        { "two", "twen" },
-        { "three", "thir" },
-        { "four" },
-        { "five", "fif" },
-        { "six" },
-        { "seven" },
-        { "eight", "eigh" },
-        { "nine" },
-        { "ten", "teen", "ty" },
-        { "eleven" },
-        { "twelve" },
-    };
-    
-    static const auto value_to_term = make_bimap<std::string_view, std::string_view>({
+    const auto value_to_term = make_bimap<std::string_view, std::string_view>({
         {  "0", "zero" },
         {  "1", "one" },
         {  "2", "two" },
@@ -177,47 +119,31 @@ namespace num
     });
 
     /*
-     * The following are distinctly named English decimal power-based numerals. These are special numerals between the
-     * unit numerals and the standard dictionary (i.e. less than a million). They are based on the formula 10^x where
-     * the power x is given by the key.
+     * The following defines some constant multiplicative shifts that, other than -illion and -illiard don't follow a
+     * special deduction rule.
      */
-    static const std::map<uint8_t, std::string_view> stems = {
-        { 1, "ty" },
-        { 2, "hundred" },
-        { 3, "thousand" },
-    };
-    
-    static const auto multiplicative_terms = make_bimap<int, std::string_view>({
-        {     100, "hundred" },
-        {    1000, "thousand" },
-        { 1000000, "million" }
-    });
-
-    static const auto multiplicative_shifts = make_bimap<int, std::string_view>({
+    const auto multiplicative_shifts = make_bimap<int, std::string_view>({
         { 2, "hundred" },
         { 3, "thousand" },
         { 4, "myriad" }
     });
-
+    
     /*
-     * Group boundary words used to split a numeral into multiple group numerals. See `split_numeral` for more details.
+     * Finds the prefix that the subject starts with.
+     * \param subject the subject to find the prefix for.
+     * \returns the iterator of a prefix-value pair in value_to_prefix.right if found; value_to_prefix.right.end() if
+     * no prefix could be found.
      */
-    static const std::vector<std::string_view> group_boundaries = { "illiard", "illion", "thousand" };
-
-    /*
-     * Helper struct for conversion between group numerals and group numbers. See `split_numeral` for more details.
-     */
-    struct group
+    auto find_prefix(const std::string_view &subject)
     {
-        std::string numeral;
-        std::string fragment_str;
-        std::string root_str;
-        std::string suffix_str;
-        std::string value_str;
-
-        uint16_t fragment = 0;
-        uint16_t factor_power = 0;
-    };
+        auto it = value_to_prefix.right.begin();
+        for (; it != value_to_prefix.right.end(); it++)
+        {
+            if (subject.substr(0, it->first.size()) == it->first)
+                return it;
+        }
+        return value_to_prefix.right.end();
+    }
 
     /*
      * Finds the additive value for the given term.
@@ -316,36 +242,6 @@ namespace num
         }
 
         return 0;
-    }
-
-    std::string_view join_numeral(std::vector<num::group> &groups)
-    {
-        std::string result;
-        return result;
-    }
-
-    bool to_number(num::group &group)
-    {
-        bool success = false;
-
-        for (const auto &stem : num::stems)
-        {
-            // Find stem and return its value
-        }
-
-        return success;
-    }
-
-    bool to_numeral(num::group &group)
-    {
-        bool success = false;
-
-        for (const auto &stem : num::stems)
-        {
-            // Find stem and return its numeral
-        }
-
-        return success;
     }
 
     void merge_places(const std::string &source, std::string &target)
@@ -505,11 +401,6 @@ namespace num
             result.insert(0, 1, '-');
 
         return result;
-    }
-
-    bool to_number(const std::string_view &numeral, uint64_t &out_value)
-    {
-        return false;
     }
 
     bool is_number(const std::string &input)
