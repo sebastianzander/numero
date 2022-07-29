@@ -179,11 +179,30 @@ namespace num
     /*
      * Finds the additive value for the given term.
      * \param term the term to find the additive value for.
+     * \param allow_numbers_greater_99 whether to allow numerics that are greater than 99.
      * \returns the additive value, a value greater than 0 if term is valid; 0 if the term is invalid.
      * \throws std::invalid_argument exception if the term does not resolve to an additive value.
      */
-    std::string_view find_additive_value(const std::string_view &term)
+    std::string_view find_additive_value(const std::string_view &term, bool allow_numbers_greater_99)
     {
+        static const std::regex number_pattern("\\d+");
+
+        std::string _term = std::string(term);
+        std::smatch matches;
+
+        if (std::regex_search(_term.cbegin(), _term.cend(), matches, number_pattern))
+        {
+            int number;
+            std::stringstream ss;
+            ss << term;
+            ss >> number;
+
+            if (!allow_numbers_greater_99 && number > 99)
+                throw std::invalid_argument("actual numbers in a numeral at this place must not be greater than 99");
+            
+            return term;
+        }
+
         const auto term_value_pair_it = value_to_term.right.find(term);
         if (term_value_pair_it != value_to_term.right.end())
         {
@@ -287,11 +306,7 @@ namespace num
         for (int place = 1; s != source.rend() && t != target.rend(); s++, t++, place++)
         {
             if (*s != '0' && *t != '0')
-            {
-                const auto message = boost::format("cannot merge %1% and %2% at place %3%")
-                                                   % original_target % source % place;
-                throw std::logic_error(message.str());
-            }
+                throw std::logic_error("sub numerals overlap the same place and cannot be merged");
             else if (*s != '0')
                 *t = *s;
         }
@@ -357,7 +372,7 @@ namespace num
             uint32_t current_multiplicative_shift = 0;
 
             try {
-                current_additive_value = find_additive_value(term);
+                current_additive_value = find_additive_value(term, groups.empty() && current_group.empty());
             } catch (const std::exception &e) {
                 find_additive_value_exception = std::current_exception();
             }
