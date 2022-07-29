@@ -396,14 +396,14 @@ namespace num
     {
         static const std::regex split_pattern("[\\s-]+");
 
-        const auto starts_with_negative = numeral.rfind("negative ", 0) == 0;
-        const auto starts_with_minus = numeral.rfind("minus ", 0) == 0;
+        if (numeral.empty())
+        {
+            const auto message = boost::format("the numeral must not be empty");
+            throw std::invalid_argument(message.str());
+        }
         
-        bool negative = starts_with_negative || starts_with_minus;
-            
+        bool negative = false;
         std::string _numeral = std::string(numeral);
-        if (starts_with_negative) _numeral.erase(0, 9);
-        else if (starts_with_minus) _numeral.erase(0, 6);
 
         auto it = std::sregex_token_iterator(_numeral.begin(), _numeral.end(), split_pattern, -1);
         
@@ -417,6 +417,12 @@ namespace num
             const auto match = *it;
             const auto term = match.str();
             
+            if (groups.empty() && current_group.empty() && (term == "negative" || term == "minus"))
+            {
+                negative = true;
+                continue;
+            }
+
             if (groups.empty() && current_group.empty() && term == "a")
             {
                 current_group = "1";
@@ -478,6 +484,12 @@ namespace num
 
                 shift_places(current_multiplicative_shift, current_group);
             }
+        }
+
+        if (groups.empty() && current_group.empty() && negative)
+        {
+            const auto message = boost::format("the numeral must not be empty");
+            throw std::invalid_argument(message.str());
         }
 
         groups.push_back(current_group);
