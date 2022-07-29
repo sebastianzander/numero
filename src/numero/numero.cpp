@@ -639,15 +639,20 @@ namespace num
         
         std::vector<std::string> groups;
         std::string current_group;
-        uint64_t additive_value = 0;
-        uint64_t multiplicative_value = 1;
-        uint64_t last_multiplicative_shift = 1;
+        uint32_t last_multiplicative_shift = 1;
         bool last_term_multiplicative = false;
 
         for (; it != std::sregex_token_iterator(); it++)
         {
             const auto match = *it;
             const auto term = match.str();
+            
+            if (groups.empty() && current_group.empty() && term == "a")
+            {
+                current_group = "1";
+                continue;
+            }
+            
             std::exception_ptr find_additive_value_exception = nullptr;
             std::exception_ptr find_multiplicative_shift_exception = nullptr;
 
@@ -666,9 +671,11 @@ namespace num
                 find_multiplicative_shift_exception = std::current_exception();
             }
 
+            // If the term is neither additive nor multiplicative, rethrow first exception and tell the term is unknown.
             if (find_additive_value_exception && find_multiplicative_shift_exception)
                 std::rethrow_exception(find_additive_value_exception);
 
+            // Process additive term.
             if (!find_additive_value_exception)
             {
                 if (last_term_multiplicative && last_multiplicative_shift >= 3)
@@ -679,8 +686,6 @@ namespace num
                     //std::cout << "New group" << std::endl;
                     
                     current_group = "";
-                    additive_value = 0;
-                    multiplicative_value = 1;
                 }
 
                 //std::cout << "Term: " << term << std::endl;
@@ -689,8 +694,13 @@ namespace num
 
                 merge_places(current_additive_value, current_group);
             }
+            // Process multiplicative term.
             else
             {
+                // Add an implicit 1 if that is missing at the beginning of the numeral.
+                if (groups.empty() && current_group.empty())
+                    current_group = "1";
+                
                 //std::cout << "Term: " << term << std::endl;
                 //std::cout << "  Multiplicative value: 10^" << current_multiplicative_shift << std::endl;
                 last_term_multiplicative = true;
