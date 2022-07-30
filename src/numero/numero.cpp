@@ -516,15 +516,20 @@ namespace num
         return number;
     }
 
-    bool is_number(const std::string &input)
+    bool is_number(const std::string &input, const conversion_options_t &conversion_options)
     {
-        static const std::regex number_pattern("^-?\\d{1,3}(?:\\.\\d{3})*(?:,\\d+)?$|^\\d+(?:,)?\\d+$");
+        const auto number_pattern_string = 
+            boost::format("^-?\\d{1,3}(?:\\%1%\\d{3})*(?:\\%2%\\d+)?$|^\\d+(?:\\%2%)?\\d+$")
+                          % std::string(1, conversion_options.thousands_separator_symbol)
+                          % std::string(1, conversion_options.decimal_separator_symbol);
+
+        const std::regex number_pattern(number_pattern_string.str());
         return std::regex_match(input, number_pattern);
     }
 
-    bool is_number(const std::string_view &input)
+    bool is_number(const std::string_view &input, const conversion_options_t &conversion_options)
     {
-        return is_number(std::string(input));
+        return is_number(std::string(input), conversion_options);
     }
 
     std::string to_numeral(const std::string_view &number, const conversion_options_t &conversion_options)
@@ -534,8 +539,8 @@ namespace num
 
     std::string convert(const std::string_view &input, const conversion_options_t &conversion_options)
     {
-        return num::is_number(input) ? num::to_numeral(input, conversion_options) : 
-                                       num::to_number(input, conversion_options);
+        return num::is_number(input, conversion_options) ? num::to_numeral(input, conversion_options) : 
+                                                           num::to_number(input, conversion_options);
     }
 }
 
@@ -646,7 +651,7 @@ int main(int argc, const char** argv)
     for (const auto &input : inputs)
     {
         std::string output;
-        const auto input_is_number = num::is_number(input);
+        const auto input_is_number = num::is_number(input, conversion_options);
         
         std::cout << (input_is_number ? "Number: " : "Numeral: ") << input << std::endl;
         
