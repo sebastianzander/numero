@@ -12,6 +12,7 @@
 #include <boost/bimap.hpp>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
+#include <boost/algorithm/string/replace.hpp>
 
 namespace num
 {
@@ -341,6 +342,11 @@ namespace num
         target = ss.str();
     }
 
+    void strip_thousands_separators(std::string &target, const char thousands_separator_symbol)
+    {
+        boost::replace_all(target, std::string(1, thousands_separator_symbol), "");
+    }
+
     std::string parse_integer_number(const std::string_view &integer, const conversion_options_t &conversion_options)
     {
         static const std::regex split_pattern("[\\s-]+");
@@ -534,6 +540,8 @@ namespace num
 
     std::string to_numeral(const std::string_view &number, const conversion_options_t &conversion_options)
     {
+        std::string _number = std::string(number);
+        strip_thousands_separators(_number, conversion_options.thousands_separator_symbol);
         return {};
     }
 
