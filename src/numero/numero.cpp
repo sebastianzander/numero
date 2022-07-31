@@ -342,11 +342,6 @@ namespace num
         target = ss.str();
     }
 
-    void strip_thousands_separators(std::string &target, const char thousands_separator_symbol)
-    {
-        boost::replace_all(target, std::string(1, thousands_separator_symbol), "");
-    }
-
     std::string parse_integer_number(const std::string_view &integer, const conversion_options_t &conversion_options)
     {
         static const std::regex split_pattern("[\\s-]+");
@@ -487,10 +482,9 @@ namespace num
             throw std::invalid_argument("the numeral must not be empty");
         
         std::string _numeral = std::string(numeral);
+        std::vector<std::string> parts;
 
         auto it = std::sregex_token_iterator(_numeral.begin(), _numeral.end(), split_pattern, -1);
-        
-        std::vector<std::string> parts;
 
         for (; it != std::sregex_token_iterator(); it++)
         {
@@ -538,11 +532,213 @@ namespace num
         return is_number(std::string(input), conversion_options);
     }
 
+    std::string parse_integer_numeral(const std::string_view &integer, const conversion_options_t &conversion_options)
+    {
+        if (integer.empty())
+            return {};
+
+        std::stringstream ss;
+        std::size_t place = integer.size() - 1;
+        auto it = integer.begin();
+
+        if (integer[0] == '-')
+        {
+            it++;
+            place--;
+            ss << "negative ";
+        }
+
+        auto group_digits = std::string();
+        bool any_group_digit_not_zero = false;
+        bool added_two_digits_term = false;
+
+        for (; it != integer.end(); it++, place--)
+        {
+            const auto digit = *it;
+            const auto group_place = place % 3;
+
+            if (group_place == 2)
+            {
+                group_digits.clear();
+                any_group_digit_not_zero = false;
+                added_two_digits_term = false;
+            }
+
+            group_digits += digit;
+            any_group_digit_not_zero |= digit != '0';
+
+            //std::cout << digit << " : " << group_place << " : " << place << std::endl;
+
+            auto value = std::string();
+            if (digit != '0') value += digit;
+
+            if (digit != '0' && group_place == 1)
+            {
+                // Get next digit as well because we need that for 2-digit base terms (e.g. thirteen or fourty)
+                const auto next_digit = *std::next(it);
+                value += next_digit;
+            }
+
+            // Encode actual number term.
+            if (!value.empty() && !added_two_digits_term)
+            {
+                const auto value_term_pair_it = value_to_term.left.find(value);
+                if (value_term_pair_it != value_to_term.left.end())
+                {
+                    ss << value_term_pair_it->second << " ";
+                    added_two_digits_term |= value.size() == 2;
+                }
+                else if (value.size() == 2)
+                {
+                    value[1] = '0';
+                    const auto value_term_pair_it = value_to_term.left.find(value);
+                    if (value_term_pair_it != value_to_term.left.end())
+                    {
+                        ss << value_term_pair_it->second << "-";
+                    }
+                    else
+                    {
+                        const auto message = boost::format("unable to resolve term for value \"%1%\"") % value;
+                        throw std::logic_error(message.str());
+                    }
+                }
+                else
+                {
+                    const auto message = boost::format("unable to resolve term for value \"%1%\"") % value;
+                    throw std::logic_error(message.str());
+                }
+            }
+
+            // Encode an "-illion" or "-illiard" term.
+            if (any_group_digit_not_zero && place >= 6 && group_place == 0)
+            {
+                const auto factor = (place - 3) / 3;
+
+                if (factor > 100)
+                    throw std::logic_error("latin roots greater than \"centillion\" are not supported");
+
+                const auto &factor_root_pair_it = factor_to_root.left.find(factor);
+                if (factor_root_pair_it != factor_to_root.left.end())
+                {
+                    ss << factor_root_pair_it->second << "illion ";
+                }
+                else
+                {
+                    const auto prefix_value = factor % 10;
+                    const auto &value_prefix_pair_it = value_to_prefix.left.find(prefix_value);
+                    if (value_prefix_pair_it != value_to_prefix.left.end())
+                    {
+                        const auto base_factor = factor - prefix_value;
+                        const auto &base_factor_root_pair_it = factor_to_root.left.find(base_factor);
+                        if (base_factor_root_pair_it != factor_to_root.left.end())
+                        {
+                            ss << value_prefix_pair_it->second << base_factor_root_pair_it->second << "illion ";
+                        }
+                        else
+                        {
+                            const auto message = boost::format("unable to resolve latin root for base factor %1%")
+                                                               % base_factor;
+                            throw std::logic_error(message.str());
+                        }
+                    }
+                    else
+                    {
+                        const auto message = boost::format("unable to resolve latin prefix for value %1%")
+                                                           % prefix_value;
+                        throw std::logic_error(message.str());
+                    }
+                }
+            }
+            else if (any_group_digit_not_zero && place == 3)
+            {
+                ss << "thousand ";
+            }
+            else if (digit != '0' && group_place == 2)
+            {
+                ss << "hundred ";
+            }
+        }
+
+        auto result = ss.str();
+        rtrim(result);
+
+        return result;
+    }
+
+    std::string parse_decimal_numeral(const std::string_view &decimal, const conversion_options_t &conversion_options)
+    {
+        if (decimal.empty())
+            return {};
+
+        std::stringstream ss;
+
+        for (const auto digit : decimal)
+        {
+            const auto value = std::string(1, digit);
+            const auto value_term_pair_it = value_to_term.left.find(value);
+            if (value_term_pair_it != value_to_term.left.end())
+            {
+                ss << value_term_pair_it->second << " ";
+            }
+            else
+            {
+                const auto message = boost::format("unable to resolve term for value \"%1%\"") % value;
+                throw std::logic_error(message.str());
+            }
+        }
+
+        auto result = ss.str();
+        rtrim(result);
+
+        return result;
+    }
+
     std::string to_numeral(const std::string_view &number, const conversion_options_t &conversion_options)
     {
-        std::string _number = std::string(number);
-        strip_thousands_separators(_number, conversion_options.thousands_separator_symbol);
-        return {};
+        const auto strip_pattern_string = 
+            boost::format("[\\s\\%1%]+") % std::string(1, conversion_options.thousands_separator_symbol);
+        const std::regex strip_pattern(strip_pattern_string.str());
+
+        const auto split_pattern_string = 
+            boost::format("\\%1%") % std::string(1, conversion_options.decimal_separator_symbol);
+        const std::regex split_pattern(split_pattern_string.str());
+
+        if (number.empty())
+            return {};
+
+        std::string _number = std::regex_replace(std::string(number), strip_pattern, "");
+        std::vector<std::string> parts;
+
+        auto it = std::sregex_token_iterator(_number.begin(), _number.end(), split_pattern, -1);
+
+        for (; it != std::sregex_token_iterator(); it++)
+        {
+            const auto match = *it;
+            const auto part = match.str();
+            parts.push_back(part);
+        }
+
+        if (parts.size() >= 3)
+        {
+            const auto message = boost::format("decimal separator \"%1%\" is only allowed once in a number")
+                                               % std::string(1, conversion_options.decimal_separator_symbol);
+            throw std::logic_error(message.str());
+        }
+
+        auto numeral = parse_integer_numeral(parts[0], conversion_options);
+
+        if (parts.size() == 2)
+        {
+            const auto parsed_decimal = parse_decimal_numeral(parts[1], conversion_options);
+
+            if (numeral.empty())
+                numeral = "zero";
+
+            if (!parsed_decimal.empty())
+                numeral += " point " + parsed_decimal;
+        }
+
+        return numeral;
     }
 
     std::string convert(const std::string_view &input, const conversion_options_t &conversion_options)
@@ -667,7 +863,7 @@ int main(int argc, const char** argv)
         {
             output = num::convert(input, conversion_options);
         }
-        catch (std::exception const &ex)
+        catch (const std::exception &ex)
         {
             std::cout << "Error: " << ex.what() << std::endl;
             return EXIT_FAILURE;
