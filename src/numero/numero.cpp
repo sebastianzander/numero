@@ -59,6 +59,7 @@ namespace num
     {
         naming_system_t naming_system = naming_system_t::short_scale;
         std::string_view language = "en-us";
+        bool debug_output = false;
         bool use_scientific_notation = false;
         bool use_thousands_separators = true;
         char thousands_separator_symbol = ',';
@@ -405,14 +406,21 @@ namespace num
                 {
                     groups.push_back(current_group);
                     
-                    //std::cout << "Group number: " << current_group << std::endl;
-                    //std::cout << "New group" << std::endl;
+                    if (conversion_options.debug_output)
+                    {
+                        std::cout << "Group number: " << current_group << std::endl;
+                        std::cout << "New group" << std::endl;
+                    }
                     
                     current_group = "";
                 }
 
-                //std::cout << "Term: " << term << std::endl;
-                //std::cout << "  Additive value: " << current_additive_value << std::endl;
+                if (conversion_options.debug_output)
+                {
+                    std::cout << "Term: " << term << std::endl;
+                    std::cout << "  Additive value: " << current_additive_value << std::endl;
+                }
+                
                 last_term_multiplicative = false;
 
                 merge_places(current_additive_value, current_group);
@@ -424,8 +432,12 @@ namespace num
                 if (groups.empty() && current_group.empty())
                     current_group = "1";
                 
-                //std::cout << "Term: " << term << std::endl;
-                //std::cout << "  Multiplicative value: 10^" << current_multiplicative_shift << std::endl;
+                if (conversion_options.debug_output)
+                {
+                    std::cout << "Term: " << term << std::endl;
+                    std::cout << "  Multiplicative value: 10^" << current_multiplicative_shift << std::endl;
+                }
+                
                 last_term_multiplicative = true;
                 last_multiplicative_shift = current_multiplicative_shift;
 
@@ -752,6 +764,9 @@ void process_program_options(const boost::program_options::variables_map &vm,
                              num::conversion_options_t &conversion_options)
 {
     using namespace boost::program_options;
+    
+    if (vm.count("debug-output"))
+        conversion_options.debug_output = vm["debug-output"].as<bool>();
 
     if (vm.count("naming-system"))
     {
@@ -799,8 +814,8 @@ int main(int argc, const char** argv)
 
     num::conversion_options_t conversion_options;
 
-    options_description desc("Options");
-    desc.add_options()
+    options_description program_options("Options");
+    program_options.add_options()
         ( "help,h",
           "Help and usage information" )
         ( "input,i", value<std::vector<std::string>>()->multitoken(),
@@ -818,10 +833,17 @@ int main(int argc, const char** argv)
         ( "decimal-separator-symbol", value<char>(),
           "Decimal separator symbol" );
         
+    options_description hidden_program_options("Hidden Options");
+    hidden_program_options.add_options()
+        ( "debug-output", value<bool>()->default_value(false) );
+        
+    options_description parsed_program_options;
+    parsed_program_options.add(program_options).add(hidden_program_options);
+        
     const auto print_usage_information = [&]() {
         std::cout << "Usage:" << std::endl <<
             "  numero [options] <input-1> [<input-2>] [\"<input-3 with spaces\"]" << std::endl << std::endl << 
-            desc << std::endl;
+            program_options << std::endl;
         return EXIT_FAILURE;
     };
     
@@ -831,15 +853,17 @@ int main(int argc, const char** argv)
         return EXIT_FAILURE;
     }
 
-    positional_options_description pos_desc;
-    pos_desc.add("input", -1);
+    positional_options_description positional_program_options;
+    positional_program_options.add("input", -1);
 
     std::vector<std::string> inputs;
 
     try
     {
         command_line_parser parser(argc, argv);
-        parser.options(desc).positional(pos_desc).allow_unregistered();
+        parser.options(parsed_program_options)
+              .positional(positional_program_options)
+              .allow_unregistered();
         parsed_options parsed_options = parser.run();
         
         variables_map vm;
