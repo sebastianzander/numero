@@ -322,6 +322,9 @@ namespace num
             else if (*s != '0')
                 *t = *s;
         }
+        
+        if (s != source.rend() && t == target.rend())
+            target.insert(target.begin(), source.begin(), s.base());
     }
 
     void shift_places(const uint32_t places_count, std::string &target)
