@@ -353,6 +353,16 @@ namespace num
     {
         static const std::regex split_pattern("[\\s-]+");
 
+        const auto throw_incorrect_sub_normal_order = [](const std::string &lower_magnitude_sub_numeral,
+                                                         const std::string &higher_magnitude_sub_numeral)
+        {
+            const auto message = boost::format("a higher magnitude sub numeral is not allowed to follow a "
+                                               "lower magnitude sub numeral: \"%1%\" follows \"%2%\". "
+                                               "Did you mean \"%1% %2%\"?")
+                                               % higher_magnitude_sub_numeral % lower_magnitude_sub_numeral;
+            throw std::invalid_argument(message.str());
+        };
+
         if (integer.empty())
             return {};
 
@@ -363,7 +373,13 @@ namespace num
         
         std::vector<std::string> groups;
         std::string current_group;
-        uint32_t last_multiplicative_shift = 1;
+        std::string last_term;
+        std::string last_sub_numeral;
+        std::string current_sub_numeral;
+        
+        uint32_t last_multiplicative_shift = 0;
+        uint32_t last_group_total_multiplicative_shift = std::numeric_limits<uint32_t>::max();
+        uint32_t current_group_total_multiplicative_shift = 0;
         bool last_term_multiplicative = false;
 
         for (; it != std::sregex_token_iterator(); it++)
@@ -371,16 +387,22 @@ namespace num
             const auto match = *it;
             const auto term = match.str();
             
-            if (groups.empty() && current_group.empty() && (term == "negative" || term == "minus"))
+            if (groups.empty() && current_group.empty())
             {
-                negative = true;
-                continue;
-            }
-
-            if (groups.empty() && current_group.empty() && term == "a")
-            {
-                current_group = "1";
-                continue;
+                current_sub_numeral = term;
+                
+                if (term == "a")
+                {
+                    current_group = "1";
+                    last_term = term;
+                    continue;
+                }
+                else if (term == "negative" || term == "minus")
+                {
+                    negative = true;
+                    last_term = term;
+                    continue;
+                }
             }
             
             std::exception_ptr find_additive_value_exception = nullptr;
@@ -410,6 +432,9 @@ namespace num
             {
                 if (last_term_multiplicative && last_multiplicative_shift >= 3)
                 {
+                    if (current_group_total_multiplicative_shift > last_group_total_multiplicative_shift)
+                        throw_incorrect_sub_normal_order(last_sub_numeral, current_sub_numeral);
+                    
                     groups.push_back(current_group);
                     
                     if (conversion_options.debug_output)
@@ -419,6 +444,11 @@ namespace num
                     }
                     
                     current_group = "";
+                    last_sub_numeral = current_sub_numeral;
+                    current_sub_numeral = term;
+                    last_group_total_multiplicative_shift = current_group_total_multiplicative_shift;
+                    current_group_total_multiplicative_shift = 0;
+                    last_multiplicative_shift = 0;
                 }
 
                 if (conversion_options.debug_output)
@@ -434,6 +464,15 @@ namespace num
             // Process multiplicative term.
             else
             {
+                if (current_multiplicative_shift < last_multiplicative_shift)
+                {
+                    const auto message = boost::format("a lower multiplicative term is not allowed to follow a "
+                                                       "higher multiplicative term: \"%1% %2%\". "
+                                                       "Did you mean \"%2% %1%\" or did you forget an additive term "
+                                                       "in front of \"%2%\"?") % last_term % term;
+                    throw std::invalid_argument(message.str());
+                }
+                
                 // Add an implicit 1 if that is missing at the beginning of the numeral.
                 if (groups.empty() && current_group.empty())
                     current_group = "1";
@@ -444,15 +483,22 @@ namespace num
                     std::cout << "  Multiplicative value: 10^" << current_multiplicative_shift << std::endl;
                 }
                 
+                current_sub_numeral += " " + term;
                 last_term_multiplicative = true;
                 last_multiplicative_shift = current_multiplicative_shift;
+                current_group_total_multiplicative_shift += current_multiplicative_shift;
 
                 shift_places(current_multiplicative_shift, current_group);
             }
+            
+            last_term = term;
         }
 
         if (groups.empty() && current_group.empty() && negative)
             throw std::invalid_argument("the numeral must not be empty");
+
+        if (current_group_total_multiplicative_shift > last_group_total_multiplicative_shift)
+            throw_incorrect_sub_normal_order(last_sub_numeral, current_sub_numeral);
 
         groups.push_back(current_group);
 
@@ -891,7 +937,7 @@ int main(int argc, const char** argv)
     }
     catch (const std::exception &ex)
     {
-        std::cerr << "Error: " << ex.what() << std::endl;
+        std::cerr << "Error: " << ex.what() << std::endl << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -908,7 +954,7 @@ int main(int argc, const char** argv)
         }
         catch (const std::exception &ex)
         {
-            std::cout << "Error: " << ex.what() << std::endl;
+            std::cout << "Error: " << ex.what() << std::endl << std::endl;
             return EXIT_FAILURE;
         }
         
