@@ -806,10 +806,10 @@ int main(int argc, const char** argv)
         ( "input,i", value<std::vector<std::string>>()->multitoken(),
           "Input value (either number or numeral)" )
         ( "naming-system", value<std::string>()->default_value("short-scale"),
-          "Number naming system (either \"short-scale\" or \"long-scale\"" )
+          "Number naming system (either \"short-scale\" or \"long-scale\")" )
         ( "language,l", value<std::string>()->default_value("en-us"),
           "ISO 639-1 standard language code for conversion to numerals" )
-        ( "scientific-notation", value<bool>()->default_value(false),
+        ( "use-scientific-notation", value<bool>()->default_value(false),
           "Uses scientific notation if applicable in conversion to numbers" )
         ( "use-thousands-separator", value<bool>()->default_value(true),
           "Uses thousands separators in conversion to numbers" )
@@ -817,6 +817,19 @@ int main(int argc, const char** argv)
           "Thousands separator symbol" )
         ( "decimal-separator-symbol", value<char>(),
           "Decimal separator symbol" );
+        
+    const auto print_usage_information = [&]() {
+        std::cout << "Usage:" << std::endl <<
+            "  numero [options] <input-1> [<input-2>] [\"<input-3 with spaces\"]" << std::endl << std::endl << 
+            desc << std::endl;
+        return EXIT_FAILURE;
+    };
+    
+    if (argc == 1)
+    {
+        print_usage_information();
+        return EXIT_FAILURE;
+    }
 
     positional_options_description pos_desc;
     pos_desc.add("input", -1);
@@ -835,9 +848,7 @@ int main(int argc, const char** argv)
 
         if (vm.count("help"))
         {
-            std::cout << "Usage:" << std::endl <<
-                "  numero [options] <input-1> [<input-2>] [\"<input-3 with spaces\"]" << std::endl << std::endl << 
-                desc << std::endl;
+            print_usage_information();
             return EXIT_FAILURE;
         }
 
