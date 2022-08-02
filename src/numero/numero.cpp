@@ -762,7 +762,9 @@ void process_program_options(const boost::program_options::variables_map &vm,
             conversion_options.naming_system = num::naming_system_t::long_scale;
         else
         {
-            const auto message = boost::format("\"%1%\" is not a valid numeral naming system") % naming_system;
+            const auto message = boost::format("\"%1%\" is not a valid number naming system. "
+                                               "Supported naming systems are \"short-scale\" and \"long-scale\".")
+                                               % naming_system;
             throw std::logic_error(message.str());
         }
     }
@@ -804,7 +806,7 @@ int main(int argc, const char** argv)
         ( "input,i", value<std::vector<std::string>>()->multitoken(),
           "Input value (either number or numeral)" )
         ( "naming-system", value<std::string>()->default_value("short-scale"),
-          "Numeral naming system (either \"short-scale\" or \"long-scale\"" )
+          "Number naming system (either \"short-scale\" or \"long-scale\"" )
         ( "language,l", value<std::string>()->default_value("en-us"),
           "ISO 639-1 standard language code for conversion to numerals" )
         ( "scientific-notation", value<bool>()->default_value(false),
@@ -846,7 +848,7 @@ int main(int argc, const char** argv)
         
         process_program_options(vm, conversion_options);
     }
-    catch (const error &ex)
+    catch (const std::exception &ex)
     {
         std::cerr << "Error: " << ex.what() << std::endl;
         return EXIT_FAILURE;
