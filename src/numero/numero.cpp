@@ -334,6 +334,9 @@ namespace num
 
     void add_thousands_separators(std::string &target, const char thousands_separator_symbol)
     {
+        if (target.find(thousands_separator_symbol) != std::string::npos)
+            return;
+        
         std::stringstream ss;
         const auto offset = target.size() % 3;
         
