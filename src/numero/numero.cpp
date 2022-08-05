@@ -445,8 +445,8 @@ namespace num
                     
                     if (conversion_options.debug_output)
                     {
-                        std::cout << "Group number: " << current_group << std::endl;
-                        std::cout << "New group" << std::endl;
+                        std::cout << "Group number: " << current_group << "\n";
+                        std::cout << "New group" << "\n";
                     }
                     
                     current_group = "";
@@ -459,8 +459,8 @@ namespace num
 
                 if (conversion_options.debug_output)
                 {
-                    std::cout << "Term: " << term << std::endl;
-                    std::cout << "  Additive value: " << current_additive_value << std::endl;
+                    std::cout << "Term: " << term << "\n";
+                    std::cout << "  Additive value: " << current_additive_value << "\n";
                 }
                 
                 last_term_multiplicative = false;
@@ -485,8 +485,8 @@ namespace num
                 
                 if (conversion_options.debug_output)
                 {
-                    std::cout << "Term: " << term << std::endl;
-                    std::cout << "  Multiplicative value: 10^" << current_multiplicative_shift << std::endl;
+                    std::cout << "Term: " << term << "\n";
+                    std::cout << "  Multiplicative value: 10^" << current_multiplicative_shift << "\n";
                 }
                 
                 current_sub_numeral += " " + term;
@@ -831,7 +831,7 @@ namespace num
             group_digits += digit;
             any_group_digit_not_zero |= digit != '0';
 
-            //std::cout << digit << " : " << group_place << " : " << place << std::endl;
+            //std::cout << digit << " : " << group_place << " : " << place << "\n";
 
             auto value = std::string();
             if (digit != '0') value += digit;
@@ -1095,9 +1095,8 @@ int main(int argc, const char** argv)
     parsed_program_options.add(program_options).add(hidden_program_options);
         
     const auto print_usage_information = [&]() {
-        std::cout << "Usage:" << std::endl <<
-            "  numero [options] <input-1> [<input-2>] [\"<input-3 with spaces\"]" << std::endl << std::endl << 
-            program_options << std::endl;
+        std::cout << "Usage:\n  numero [options] <input-1> [<input-2>] [\"<input-3 with spaces\"]\n\n" <<
+                     program_options << "\n";
         return EXIT_FAILURE;
     };
     
@@ -1139,7 +1138,7 @@ int main(int argc, const char** argv)
     }
     catch (const std::exception &ex)
     {
-        std::cerr << "Error: " << ex.what() << std::endl << std::endl;
+        std::cerr << "\033[31mError: " << ex.what() << "\033[0m\n\n";
         return EXIT_FAILURE;
     }
 
@@ -1155,14 +1154,14 @@ int main(int argc, const char** argv)
             const auto input_is_numeral = num::is_numeral(input);
             if (!input_is_numeral)
             {
-                std::cout << "Input: " << input << std::endl;
-                std::cout << "Error: the given input is neither number nor numeral" << std::endl << std::endl;
+                std::cout << "Input: \033[34m" << input << "\033[0m\n";
+                std::cerr << "\033[31mError: the given input is neither number nor numeral\033[0m\n\n";
                 failure_count++;
                 continue;
             }
         }
         
-        std::cout << (input_is_number ? "Number: " : "Numeral: ") << input << std::endl;
+        std::cout << (input_is_number ? "Number: \033[34m" : "Numeral: \033[34m") << input << "\033[0m\n";
         
         try
         {
@@ -1170,12 +1169,12 @@ int main(int argc, const char** argv)
         }
         catch (const std::exception &ex)
         {
-            std::cout << "Error: " << ex.what() << std::endl << std::endl;
+            std::cerr << "\033[31mError: " << ex.what() << "\033[0m\n\n";
             failure_count++;
             continue;
         }
         
-        std::cout << (input_is_number ? "Numeral: " : "Number: ") << output << std::endl << std::endl;
+        std::cout << (input_is_number ? "Numeral: \033[33m" : "Number: \033[33m") << output << "\033[0m\n\n";
     }
     
     return failure_count ? failure_count : EXIT_SUCCESS;
