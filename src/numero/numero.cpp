@@ -237,7 +237,7 @@ namespace num
      * \returns the multiplicative shift, a value greater than 0 if term is valid; 0 if the term is invalid.
      * \throws std::invalid_argument exception if the term does not resolve to a multiplicative shift.
      */
-    uint32_t find_multiplicative_shift(const std::string_view &term)
+    uint32_t find_multiplicative_shift(const std::string_view &term, const conversion_options_t &conversion_options)
     {
         static const std::regex latin_root_pattern("(.*)(illion|illiard)$");
 
@@ -249,14 +249,28 @@ namespace num
             const auto &root_base = matches[1].str();
             const auto &root_suffix = matches[2].str();
 
-            if (root_suffix == "illiard")
-                throw std::invalid_argument("long scale number system is currently not supported");
+            if (conversion_options.naming_system != naming_system_t::long_scale && root_suffix == "illiard")
+                throw std::invalid_argument("using long scale terms but number naming system is not set to long scale");
+
+            auto short_scale_shift = [&](const int root_factor) {
+                return 3 * root_factor + 3;
+            };
+
+            auto long_scale_shift = [&](const int root_factor) {
+                return root_suffix == "illiard" ? 6 * root_factor + 3 : 6 * root_factor;
+            };
+
+            std::function<int(const int)> scale_shift;
+            if (conversion_options.naming_system == naming_system_t::long_scale)
+                scale_shift = long_scale_shift;
+            else
+                scale_shift = short_scale_shift;
 
             const auto factor_it = factor_to_root.right.find(root_base);
             if (factor_it != factor_to_root.right.end())
             {
                 const auto root_factor = factor_it->second;
-                return 3 * root_factor + 3;
+                return scale_shift(root_factor);
             }
             else
             {
@@ -270,7 +284,7 @@ namespace num
                     if (factor_it != factor_to_root.right.end())
                     {
                         const auto root_factor = factor_it->second + prefix_value_pair_it->second;
-                        return 3 * root_factor + 3;
+                        return scale_shift(root_factor);
                     }
                     // R-007: Verify valid terms in numeral.
                     else
@@ -424,7 +438,7 @@ namespace num
             }
 
             try {
-                current_multiplicative_shift = find_multiplicative_shift(term);
+                current_multiplicative_shift = find_multiplicative_shift(term, conversion_options);
             } catch (const std::exception &e) {
                 find_multiplicative_shift_exception = std::current_exception();
             }
@@ -876,7 +890,10 @@ namespace num
             // Encode an "-illion" or "-illiard" term.
             if (any_group_digit_not_zero && place >= 6 && group_place == 0)
             {
-                const auto factor = (place - 3) / 3;
+                const auto factor = conversion_options.naming_system == naming_system_t::short_scale ?
+                                    (place - 3) / 3 : place / 6;
+                const auto remainder = conversion_options.naming_system == naming_system_t::short_scale ?
+                                       0 : place % 6;
 
                 if (factor > 100)
                     throw std::logic_error("latin roots greater than \"centillion\" are not supported");
@@ -884,7 +901,7 @@ namespace num
                 const auto &factor_root_pair_it = factor_to_root.left.find(factor);
                 if (factor_root_pair_it != factor_to_root.left.end())
                 {
-                    ss << factor_root_pair_it->second << "illion ";
+                    ss << factor_root_pair_it->second << (remainder == 3 ? "illiard " : "illion ");
                 }
                 else
                 {
@@ -896,7 +913,8 @@ namespace num
                         const auto &base_factor_root_pair_it = factor_to_root.left.find(base_factor);
                         if (base_factor_root_pair_it != factor_to_root.left.end())
                         {
-                            ss << value_prefix_pair_it->second << base_factor_root_pair_it->second << "illion ";
+                            ss << value_prefix_pair_it->second << base_factor_root_pair_it->second
+                               << (remainder == 3 ? "illiard " : "illion ");
                         }
                         else
                         {
@@ -1020,9 +1038,11 @@ void process_program_options(const boost::program_options::variables_map &vm,
     if (vm.count("naming-system"))
     {
         const auto &naming_system = vm["naming-system"].as<std::string>();
-        if (naming_system == "short-scale")
+        if (naming_system == "short-scale" || naming_system == "short" ||
+            naming_system == "ss" || naming_system == "SS")
             conversion_options.naming_system = num::naming_system_t::short_scale;
-        else if (naming_system == "long-scale")
+        else if (naming_system == "long-scale" || naming_system == "long" ||
+            naming_system == "ls" || naming_system == "LS")
             conversion_options.naming_system = num::naming_system_t::long_scale;
         else
         {
@@ -1072,8 +1092,8 @@ int main(int argc, const char** argv)
           "Help and usage information" )
         ( "input,i", value<std::vector<std::string>>()->multitoken(),
           "Input value (either number or numeral)" )
-        ( "naming-system", value<std::string>()->default_value("short-scale"),
-          "Number naming system (either \"short-scale\" or \"long-scale\")" )
+        ( "naming-system,s", value<std::string>()->default_value("short-scale"),
+          "Number naming system; either \"short-scale\" (\"SS\") or \"long-scale\" (\"LS\")" )
         ( "language,l", value<std::string>()->default_value("en-us"),
           "ISO 639-1 standard language code for conversion to numerals" )
         ( "use-scientific-notation", value<bool>()->default_value(false),
@@ -1089,7 +1109,7 @@ int main(int argc, const char** argv)
         
     options_description hidden_program_options("Hidden Options");
     hidden_program_options.add_options()
-        ( "debug-output", value<bool>()->default_value(false) );
+        ( "debug-output", bool_switch() );
         
     options_description parsed_program_options;
     parsed_program_options.add(program_options).add(hidden_program_options);
