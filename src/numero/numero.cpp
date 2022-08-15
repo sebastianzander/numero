@@ -597,7 +597,7 @@ namespace num
      */
     bool is_numeral(const std::string &input)
     {
-        static const std::regex numeral_pattern("^[\\w ]+$");
+        static const std::regex numeral_pattern("^[\\w\\- ]+$");
         return std::regex_match(input, numeral_pattern);
     }
 
