@@ -610,7 +610,10 @@ namespace num
      */
     bool converter_c::is_number(const std::string_view &input)
     {
-        return std::regex_match(std::string(input), _number_pattern);
+        bool negative;
+        std::string integral_part, fractional_part;
+        int32_t exponent;
+        return extract_number_parts(std::string(input), negative, integral_part, fractional_part, exponent);
     }
     
     /*
