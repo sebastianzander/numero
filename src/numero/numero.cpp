@@ -745,7 +745,7 @@ namespace num
             //std::cout << digit << " : " << group_place << " : " << place << "\n";
 
             auto value = std::string();
-            if (digit != '0') value += digit;
+            if (digit != '0' || integral == "0") value += digit;
 
             if (digit != '0' && group_place == 1)
             {
@@ -892,12 +892,12 @@ namespace num
 
         if (!integral_part.empty())
         {
-            const auto parsed_integral =  parse_integral_numeral(integral_part, _conversion_options);
+            const auto parsed_integral = parse_integral_numeral(integral_part, _conversion_options);
             if (!parsed_integral.empty())
             {
-                if (numeral.empty())
+                if (numeral.empty() && (integral_part != "0" || _conversion_options.force_leading_zero))
                     numeral = parsed_integral;
-                else
+                else if (!numeral.empty())
                     numeral += " " + parsed_integral;
             }
         }
