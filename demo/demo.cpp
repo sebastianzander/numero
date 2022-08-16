@@ -5,7 +5,7 @@
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
 
-#include "numero/numero.h"
+#include <numero/numero.h>
 
 void process_program_options(const boost::program_options::variables_map &vm,
                              num::conversion_options_t &conversion_options)
@@ -156,16 +156,17 @@ int main(int argc, const char** argv)
         naming_system_string = "undefined scale";
     }
 
+    num::converter_c converter(conversion_options);
     std::size_t failure_count = 0;
 
     for (const auto &input : inputs)
     {
         std::string output;
-        const auto input_is_number = num::is_number(input, conversion_options);
+        const auto input_is_number = converter.is_number(input);
         
         if (!input_is_number)
         {
-            const auto input_is_numeral = num::is_numeral(input);
+            const auto input_is_numeral = converter.is_numeral(input);
             if (!input_is_numeral)
             {
                 std::cout << "Input: \033[34m" << input << "\033[0m\n";
@@ -182,7 +183,7 @@ int main(int argc, const char** argv)
         
         try
         {
-            output = num::convert(input, conversion_options);
+            output = converter.convert(input);
         }
         catch (const std::exception &ex)
         {

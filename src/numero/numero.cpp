@@ -536,7 +536,7 @@ namespace num
         return ss.str();
     }
 
-    std::string to_number(const std::string_view &numeral, const conversion_options_t &conversion_options)
+    std::string converter_c::to_number(const std::string_view &numeral)
     {
         static const std::regex split_pattern(" ?point ");
 
@@ -558,16 +558,16 @@ namespace num
         if (parts.size() >= 3)
             throw std::logic_error("\"point\" is only allowed once in a numeral as a decimal separator");
 
-        auto number = parse_integral_number(parts[0], conversion_options);
+        auto number = parse_integral_number(parts[0], _conversion_options);
 
         if (parts.size() == 2)
         {
-            const auto parsed_fractional = parse_fractional_number(parts[1], conversion_options);
+            const auto parsed_fractional = parse_fractional_number(parts[1], _conversion_options);
 
             if (number.empty())
                 number = "0";
 
-            number.insert(number.end(), conversion_options.decimal_separator_symbol);
+            number.insert(number.end(), _conversion_options.decimal_separator_symbol);
 
             if (parsed_fractional.empty())
                 number += "0";
@@ -586,23 +586,9 @@ namespace num
      * \param input The input to be checked.
      * \returns True if the input likely represents a valid numeral, false otherwise.
      */
-    bool is_numeral(const std::string &input)
+    bool converter_c::is_numeral(const std::string_view &input)
     {
-        static const std::regex numeral_pattern("^[\\w\\- ]+$");
-        return std::regex_match(input, numeral_pattern);
-    }
-
-    /*
-     * Checks whether the given input is likely a numeral. Attention: You are better off checking whether the given
-     * input is a valid number before, because numerals also allow simple positive numbers that have no thousands
-     * separators, no decimal separator and no exponent (i.e. scientific notation).
-     *
-     * \param input The input to be checked.
-     * \returns True if the input likely represents a valid numeral, false otherwise.
-     */
-    bool is_numeral(const std::string_view &input)
-    {
-        return is_numeral(std::string(input));
+        return std::regex_match(std::string(input), _numeral_pattern);
     }
 
     /*
@@ -622,37 +608,9 @@ namespace num
      * \param input The input to be checked.
      * \returns True if the input is a valid number, false otherwise.
      */
-    bool is_number(const std::string &input, const conversion_options_t &conversion_options)
+    bool converter_c::is_number(const std::string_view &input)
     {
-        static const auto number_pattern_string = 
-            boost::format("^(-)?((?:\\d{1,3}(?:\\%1%\\d{3})*)|(?:\\d+))?(\\%2%\\d+)?(?:e(-?\\d+))?$")
-                          /* %1% */ % std::string(1, conversion_options.thousands_separator_symbol)
-                          /* %2% */ % std::string(1, conversion_options.decimal_separator_symbol);
-
-        static const std::regex number_pattern(number_pattern_string.str());
-        return std::regex_match(input, number_pattern);
-    }
-
-    /*
-     * Checks whether the given input is a number. A number in this sense may lead with an optional minus sign, it is 
-     * then followed either an integral part, a fractional part or both. At the end there may be an optional exponent
-     * specified. The integral part may group each three digits beginning at the right, where the groups are separated
-     * by the thousands separator symbol given in the conversion options. If both integral and fractional part are given
-     * they are separated by the decimal separator symbol that is also given in the conversion options.
-     * 
-     * Examples of valid numbers:
-     *   1
-     *   -1.0625
-     *   .75
-     *   1,025,000
-     *   3.85e9
-     *
-     * \param input The input to be checked.
-     * \returns True if the input is a valid number, false otherwise.
-     */
-    bool is_number(const std::string_view &input, const conversion_options_t &conversion_options)
-    {
-        return is_number(std::string(input), conversion_options);
+        return std::regex_match(std::string(input), _number_pattern);
     }
     
     /*
@@ -671,7 +629,6 @@ namespace num
      *   3.85e9
      *
      * \param input The input representing the number to be extracted.
-     * \param conversion_options Conversion options used for regional destinction and number formatting.
      * \param out_negative A boolean that receives true if the number is negative.
      * \param out_integral_part A string that receives the integral part of the number (if any) without thousands
      *   separators.
@@ -682,21 +639,15 @@ namespace num
      * \throws std::invalid_argument exception (see std::stoi).
      * \throws std::out_of_range exception (see std::stoi).
      */
-    bool extract_number_parts(const std::string &input, const conversion_options_t &conversion_options,
-                              bool &out_negative, std::string &out_integral_part, std::string &out_fractional_part,
-                              int32_t &out_exponent, bool resolve_exponent = true)
+    bool converter_c::extract_number_parts(const std::string_view &input, bool &out_negative,
+                                           std::string &out_integral_part, std::string &out_fractional_part,
+                                           int32_t &out_exponent, bool resolve_exponent)
     {
-        static const auto number_pattern_string = 
-            boost::format("^(-)?((?:\\d{1,3}(?:\\%1%\\d{3})*)|(?:\\d+))?(?:\\%2%(\\d+))?(?:e(-?\\d+))?$")
-                          /* %1% */ % std::string(1, conversion_options.thousands_separator_symbol)
-                          /* %2% */ % std::string(1, conversion_options.decimal_separator_symbol);
-                          
         enum indices { SIGN = 1, INTEGRAL, FRACTIONAL, EXPONENT };
-
-        static const std::regex number_pattern(number_pattern_string.str());
         std::smatch matches;
+        std::string _input = std::string(input);
 
-        if (std::regex_search(input.cbegin(), input.cend(), matches, number_pattern))
+        if (std::regex_search(_input.cbegin(), _input.cend(), matches, _number_pattern))
         {
             const auto is_negative = matches[SIGN].matched;
             const auto has_integral_part = matches[INTEGRAL].matched;
@@ -710,7 +661,7 @@ namespace num
             std::string fractional_part = has_fractional_part ? matches[FRACTIONAL].str() : "";
             auto exponent = has_exponent ? std::stoi(matches[EXPONENT].str()) : 0;
 
-            strip_thousands_separators(integral_part, conversion_options.thousands_separator_symbol);
+            strip_thousands_separators(integral_part, _conversion_options.thousands_separator_symbol);
 
             if (resolve_exponent && exponent != 0)
             {
@@ -735,7 +686,7 @@ namespace num
                 {
                     for (int i = 0; i < -decimal_separator_position; i++)
                         full_number.insert(full_number.begin(), '0');
-                    if (conversion_options.force_leading_zero)
+                    if (_conversion_options.force_leading_zero)
                         integral_part = "0";
                     else
                         integral_part.erase();
@@ -758,40 +709,6 @@ namespace num
         }
         
         return false;
-    }
-    
-    /*
-     * Extracts a decimal number, either integer or floating-point, either in scientific notation or not, from the given
-     * input string. It uses the thousands and decimal separator symbols given in the conversion options. If input
-     * represents a valid number, the integral part of the number is written to out_integral_part, the fractional part
-     * of the number is written to out_fractional_part and the exponent is written to out_exponent. If the number is
-     * negative, out_negative will be set to true. Out parameters will only be set if the function returns true, i.e.
-     * the input represents a valid number.
-     * 
-     * Examples of valid numbers:
-     *   1
-     *   -1.0625
-     *   .75
-     *   1,025,000
-     *   3.85e9
-     *
-     * \param input The input representing the number to be extracted.
-     * \param conversion_options Conversion options used for regional destinction and number formatting.
-     * \param out_negative A boolean that receives true if the number is negative.
-     * \param out_integral_part A string that receives the integral part of the number (if any).
-     * \param out_fractional_part A string that receives the fractional part of the number (if any).
-     * \param out_exponent An integer that receives the exponent (power) of the number.
-     * \param resolve_exponent Whether the decimal point shall be moved according to the number's exponent.
-     * \returns True if the input represents a valid number, false otherwise.
-     * \throws std::invalid_argument exception (see std::stoi).
-     * \throws std::out_of_range exception (see std::stoi).
-     */
-    bool extract_number_parts(const std::string_view &input, const conversion_options_t &conversion_options,
-                              bool &out_negative, std::string &out_integral_part, std::string &out_fractional_part,
-                              int32_t &out_exponent, bool resolve_exponent = true)
-    {
-        return extract_number_parts(std::string(input), conversion_options, out_negative, out_integral_part,
-                                    out_fractional_part, out_exponent, resolve_exponent);
     }
 
     std::string parse_integral_numeral(const std::string_view &integral, const conversion_options_t &conversion_options)
@@ -952,7 +869,7 @@ namespace num
         return result;
     }
 
-    std::string to_numeral(const std::string_view &number, const conversion_options_t &conversion_options)
+    std::string converter_c::to_numeral(const std::string_view &number)
     {
         if (number.empty())
             return {};
@@ -962,7 +879,7 @@ namespace num
         std::string fractional_part;
         int32_t exponent = 0;
 
-        if (!extract_number_parts(number, conversion_options, negative, integral_part, fractional_part, exponent))
+        if (!extract_number_parts(number, negative, integral_part, fractional_part, exponent))
             return {};
 
         std::string numeral;
@@ -972,7 +889,7 @@ namespace num
 
         if (!integral_part.empty())
         {
-            const auto parsed_integral =  parse_integral_numeral(integral_part, conversion_options);
+            const auto parsed_integral =  parse_integral_numeral(integral_part, _conversion_options);
             if (!parsed_integral.empty())
             {
                 if (numeral.empty())
@@ -984,7 +901,7 @@ namespace num
 
         if (!fractional_part.empty())
         {
-            const auto parsed_fractional = parse_fractional_numeral(fractional_part, conversion_options);
+            const auto parsed_fractional = parse_fractional_numeral(fractional_part, _conversion_options);
             if (!parsed_fractional.empty())
             {
                 if (numeral.empty())
@@ -997,9 +914,29 @@ namespace num
         return numeral;
     }
 
-    std::string convert(const std::string_view &input, const conversion_options_t &conversion_options)
+    std::string converter_c::convert(const std::string_view &input)
     {
-        return num::is_number(input, conversion_options) ? num::to_numeral(input, conversion_options) : 
-                                                           num::to_number(input, conversion_options);
+        return is_number(input) ? to_numeral(input) : to_number(input);
+    }
+
+    converter_c::converter_c() :
+        _number_pattern_string(
+            (boost::format("^(-)?((?:\\d{1,3}(?:\\%1%\\d{3})*)|(?:\\d+))?(?:\\%2%(\\d+))?(?:e(-?\\d+))?$")
+                           /* %1% */ % std::string(1, _conversion_options.thousands_separator_symbol)
+                           /* %2% */ % std::string(1, _conversion_options.decimal_separator_symbol)).str()),
+        _number_pattern(_number_pattern_string),
+        _numeral_pattern("^[\\w\\- ]+$")
+    {
+    }
+
+    converter_c::converter_c(const conversion_options_t &conversion_options) :
+        _conversion_options(conversion_options),
+        _number_pattern_string(
+            (boost::format("^(-)?((?:\\d{1,3}(?:\\%1%\\d{3})*)|(?:\\d+))?(?:\\%2%(\\d+))?(?:e(-?\\d+))?$")
+                           /* %1% */ % std::string(1, conversion_options.thousands_separator_symbol)
+                           /* %2% */ % std::string(1, conversion_options.decimal_separator_symbol)).str()),
+        _number_pattern(_number_pattern_string),
+        _numeral_pattern("^[\\w\\- ]+$")
+    {
     }
 }
