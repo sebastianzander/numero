@@ -1162,6 +1162,20 @@ int main(int argc, const char** argv)
         return EXIT_FAILURE;
     }
 
+    std::string naming_system_string;
+
+    switch (conversion_options.naming_system)
+    {
+    case num::naming_system_t::short_scale:
+        naming_system_string = "short scale";
+        break;
+    case num::naming_system_t::long_scale:
+        naming_system_string = "long scale";
+        break;
+    default:
+        naming_system_string = "undefined scale";
+    }
+
     std::size_t failure_count = 0;
 
     for (const auto &input : inputs)
@@ -1181,7 +1195,10 @@ int main(int argc, const char** argv)
             }
         }
         
-        std::cout << (input_is_number ? "Number: \033[34m" : "Numeral: \033[34m") << input << "\033[0m\n";
+        if (input_is_number)
+            std::cout << "Number: \033[34m" << input << "\033[0m\n";
+        else
+            std::cout << "Numeral: \033[34m" << input << " \033[37m(" << naming_system_string << ")\033[0m\n";
         
         try
         {
@@ -1194,7 +1211,10 @@ int main(int argc, const char** argv)
             continue;
         }
         
-        std::cout << (input_is_number ? "Numeral: \033[33m" : "Number: \033[33m") << output << "\033[0m\n\n";
+        if (input_is_number)
+            std::cout << "Numeral: \033[33m" << output << " \033[37m(" << naming_system_string << ")\033[0m\n";
+        else
+            std::cout << "Number: \033[33m" << output << "\033[0m\n";
     }
     
     return failure_count ? failure_count : EXIT_SUCCESS;
