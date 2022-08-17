@@ -1,6 +1,7 @@
 #ifndef NUMERO_NUMERO_H
 #define NUMERO_NUMERO_H
 
+#include <map>
 #include <string>
 #include <string_view>
 #include <regex>
@@ -58,10 +59,11 @@ namespace num
                                   std::string &out_fractional_part, int32_t &out_exponent,
                                   bool resolve_exponent = true);
 
+        std::regex get_number_pattern_regex();
+
     private:
+        std::map<int16_t, const std::regex> _number_patterns;
         conversion_options_t _conversion_options;
-        const std::string _number_pattern_string;
-        const std::regex _number_pattern;
         const std::regex _numeral_pattern;
     };
 };

@@ -647,10 +647,12 @@ namespace num
                                            int32_t &out_exponent, bool resolve_exponent)
     {
         enum indices { SIGN = 1, INTEGRAL, FRACTIONAL, EXPONENT };
+
+        const auto &number_pattern = get_number_pattern_regex();
         std::smatch matches;
         std::string _input = std::string(input);
 
-        if (std::regex_search(_input.cbegin(), _input.cend(), matches, _number_pattern))
+        if (std::regex_search(_input.cbegin(), _input.cend(), matches, number_pattern))
         {
             const auto is_negative = matches[SIGN].matched;
             const auto has_integral_part = matches[INTEGRAL].matched;
@@ -923,23 +925,36 @@ namespace num
     }
 
     converter_c::converter_c() :
-        _number_pattern_string(
-            (boost::format("^(-)?((?:\\d{1,3}(?:\\%1%\\d{3})*)|(?:\\d+))?(?:\\%2%(\\d+))?(?:e(-?\\d+))?$")
-                           /* %1% */ % std::string(1, _conversion_options.thousands_separator_symbol)
-                           /* %2% */ % std::string(1, _conversion_options.decimal_separator_symbol)).str()),
-        _number_pattern(_number_pattern_string),
-        _numeral_pattern("^[\\w\\- ]+$")
+        _numeral_pattern("^[\\w\\- ]+$", std::regex::optimize)
     {
+        // Create the initial number pattern regular expression.
+        get_number_pattern_regex();
     }
 
     converter_c::converter_c(const conversion_options_t &conversion_options) :
         _conversion_options(conversion_options),
-        _number_pattern_string(
-            (boost::format("^(-)?((?:\\d{1,3}(?:\\%1%\\d{3})*)|(?:\\d+))?(?:\\%2%(\\d+))?(?:e(-?\\d+))?$")
-                           /* %1% */ % std::string(1, conversion_options.thousands_separator_symbol)
-                           /* %2% */ % std::string(1, conversion_options.decimal_separator_symbol)).str()),
-        _number_pattern(_number_pattern_string),
-        _numeral_pattern("^[\\w\\- ]+$")
+        _numeral_pattern("^[\\w\\- ]+$", std::regex::optimize)
     {
+        // Create the initial number pattern regular expression.
+        get_number_pattern_regex();
+    }
+
+    std::regex converter_c::get_number_pattern_regex()
+    {
+        const int16_t key = _conversion_options.thousands_separator_symbol << 8 |
+                            _conversion_options.decimal_separator_symbol;
+
+        const auto number_pattern_it = _number_patterns.find(key);
+        if (number_pattern_it != _number_patterns.end())
+            return number_pattern_it->second;
+        
+        const auto pattern = std::regex(
+            (boost::format("^(-)?((?:\\d{1,3}(?:\\%1%\\d{3})*)|(?:\\d+))?(?:\\%2%(\\d+))?(?:e(-?\\d+))?$")
+                           % std::string(1, _conversion_options.thousands_separator_symbol)
+                           % std::string(1, _conversion_options.decimal_separator_symbol)).str(),
+                           !_number_patterns.empty() ? static_cast<std::regex_constants::syntax_option_type>(0) : 
+                                                       std::regex::optimize);
+        _number_patterns.insert({ key, pattern });
+        return pattern;
     }
 }
