@@ -17,6 +17,7 @@ BOOST_AUTO_TEST_CASE(is_number)
     BOOST_CHECK(english_converter.is_number("1e-3"));
     BOOST_CHECK(english_converter.is_number("1-e3") == false);
     BOOST_CHECK(english_converter.is_number("-") == false);
+    BOOST_CHECK(english_converter.is_number("8million") == false);
     
     BOOST_CHECK(english_converter.is_number("1,000"));
     BOOST_CHECK(english_converter.is_number("1,000,000"));
@@ -48,6 +49,7 @@ BOOST_AUTO_TEST_CASE(convert_invalid_arguments)
 
     BOOST_CHECK_THROW(converter.to_number(""), std::invalid_argument);
     BOOST_CHECK_THROW(converter.to_number("@"), std::invalid_argument);
+    BOOST_CHECK_THROW(converter.to_number("8million"), std::invalid_argument);
     BOOST_CHECK_THROW(converter.to_number("negative"), std::invalid_argument);
     BOOST_CHECK_THROW(converter.to_number("gazillion"), std::invalid_argument);
 }
@@ -87,6 +89,7 @@ BOOST_AUTO_TEST_CASE(convert_hundreds)
 
     BOOST_CHECK(converter.to_number("hundred") == "100");
     BOOST_CHECK(converter.to_number("a hundred") == "100");
+    BOOST_CHECK(converter.to_number("1 hundred") == "100");
     BOOST_CHECK(converter.to_number("one hundred") == "100");
     BOOST_CHECK(converter.to_numeral("100") == "one hundred");
 

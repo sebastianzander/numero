@@ -557,6 +557,9 @@ namespace num
         if (numeral.empty())
             throw std::invalid_argument("the numeral must not be empty");
         
+        if (!is_numeral(numeral))
+            throw std::invalid_argument("the numeral is invalid");
+        
         std::string _numeral = std::string(numeral);
         std::vector<std::string> parts;
 
@@ -602,7 +605,7 @@ namespace num
      */
     bool converter_c::is_numeral(const std::string_view &input)
     {
-        return std::regex_match(std::string(input), _numeral_pattern);
+        return std::regex_match(std::string(input), _numeral_pattern) && input != "negative" && input != "minus";
     }
 
     /*
@@ -939,7 +942,7 @@ namespace num
     }
 
     converter_c::converter_c() :
-        _numeral_pattern("^[\\w\\- ]+$", std::regex::optimize)
+        _numeral_pattern("^(?:[a-z]+|[0-9]+)(?:(?:[\\t ]+|-)(?:[a-z]+|[0-9]+))*$", std::regex::optimize)
     {
         // Create the initial number pattern regular expression.
         get_number_pattern_regex();
@@ -947,7 +950,7 @@ namespace num
 
     converter_c::converter_c(const conversion_options_t &conversion_options) :
         _conversion_options(conversion_options),
-        _numeral_pattern("^[\\w\\- ]+$", std::regex::optimize)
+        _numeral_pattern("^(?:[a-z]+|[0-9]+)(?:(?:[\\t ]+|-)(?:[a-z]+|[0-9]+))*$", std::regex::optimize)
     {
         // Create the initial number pattern regular expression.
         get_number_pattern_regex();
