@@ -350,8 +350,16 @@ namespace num
     {
         static const std::regex split_pattern("[\\s-]+");
 
-        const auto throw_incorrect_sub_normal_order = [](const std::string &lower_magnitude_sub_numeral,
-                                                         const std::string &higher_magnitude_sub_numeral)
+        const auto throw_duplicate_sub_numeral_magnitudes = [](const std::string &first_sub_numeral,
+                                                               const std::string &second_sub_numeral)
+        {
+            const auto message = boost::format("there must not be multiple sub numerals with the same magnitude: "
+                                               "\"%1%\" and \"%2%\".") % first_sub_numeral % second_sub_numeral;
+            throw std::invalid_argument(message.str());
+        };
+
+        const auto throw_incorrect_sub_numeral_order = [](const std::string &lower_magnitude_sub_numeral,
+                                                          const std::string &higher_magnitude_sub_numeral)
         {
             const auto message = boost::format("a higher magnitude sub numeral is not allowed to follow a "
                                                "lower magnitude sub numeral: \"%1%\" follows \"%2%\". "
@@ -369,6 +377,8 @@ namespace num
         auto it = std::sregex_token_iterator(_integral.begin(), _integral.end(), split_pattern, -1);
         
         std::vector<std::string> groups;
+        std::set<uint32_t> used_shifts;
+
         std::string current_group;
         std::string last_term;
         std::string last_sub_numeral;
@@ -429,8 +439,10 @@ namespace num
             {
                 if (last_term_multiplicative && last_multiplicative_shift >= 3)
                 {
-                    if (current_group_total_multiplicative_shift > last_group_total_multiplicative_shift)
-                        throw_incorrect_sub_normal_order(last_sub_numeral, current_sub_numeral);
+                    if (current_group_total_multiplicative_shift == last_group_total_multiplicative_shift)
+                        throw_duplicate_sub_numeral_magnitudes(last_sub_numeral, current_sub_numeral);
+                    else if (current_group_total_multiplicative_shift > last_group_total_multiplicative_shift)
+                        throw_incorrect_sub_numeral_order(last_sub_numeral, current_sub_numeral);
                     
                     groups.push_back(current_group);
                     
@@ -494,8 +506,10 @@ namespace num
         if (groups.empty() && current_group.empty() && negative)
             throw std::invalid_argument("the numeral must not be empty");
 
-        if (current_group_total_multiplicative_shift > last_group_total_multiplicative_shift)
-            throw_incorrect_sub_normal_order(last_sub_numeral, current_sub_numeral);
+        if (current_group_total_multiplicative_shift == last_group_total_multiplicative_shift)
+            throw_duplicate_sub_numeral_magnitudes(last_sub_numeral, current_sub_numeral);
+        else if (current_group_total_multiplicative_shift > last_group_total_multiplicative_shift)
+            throw_incorrect_sub_numeral_order(last_sub_numeral, current_sub_numeral);
 
         groups.push_back(current_group);
 
