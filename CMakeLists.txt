@@ -25,4 +25,5 @@ include_directories(${Boost_INCLUDE_DIRS})
 target_link_libraries(numero ${Boost_PROGRAM_OPTIONS_LIBRARY} ${Boost_REGEX_LIBRARY})
 
 add_subdirectory(demo)
+add_subdirectory(perf)
 add_subdirectory(test)
