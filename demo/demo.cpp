@@ -120,8 +120,7 @@ int main(int argc, const char** argv)
     {
         command_line_parser parser(argc, argv);
         parser.options(parsed_program_options)
-              .positional(positional_program_options)
-              .allow_unregistered();
+              .positional(positional_program_options);
         parsed_options parsed_options = parser.run();
         
         variables_map vm;
