@@ -7,6 +7,14 @@
 
 #include <numero/numero.h>
 
+enum class output_mode_t
+{
+    UNSET = 0,
+    DESCRIPTIVE,
+    ASSOCIATIVE,
+    BARE
+};
+
 void process_program_options(const boost::program_options::variables_map &vm,
                              num::conversion_options_t &conversion_options)
 {
@@ -72,6 +80,8 @@ int main(int argc, const char** argv)
           "Help and usage information" )
         ( "input,i", value<std::vector<std::string>>()->multitoken(),
           "Input value (either number or numeral)" )
+        ( "output-mode,o", value<std::string>(),
+          "Either \"descriptive\", \"associative\" or \"bare\"" )
         ( "naming-system,s", value<std::string>()->default_value("short-scale"),
           "Number naming system; either \"short-scale\" (\"SS\") or \"long-scale\" (\"LS\")" )
         ( "language,l", value<std::string>()->default_value("en-us"),
@@ -99,17 +109,12 @@ int main(int argc, const char** argv)
                      program_options << "\n";
         return EXIT_FAILURE;
     };
-    
-    if (argc == 1)
-    {
-        print_usage_information();
-        return EXIT_FAILURE;
-    }
 
+    std::vector<std::string> cmdline_inputs, stdin_inputs;
+    output_mode_t output_mode = output_mode_t::UNSET;
+    
     positional_options_description positional_program_options;
     positional_program_options.add("input", -1);
-
-    std::vector<std::string> inputs;
 
     try
     {
@@ -129,10 +134,19 @@ int main(int argc, const char** argv)
             return EXIT_FAILURE;
         }
 
-        if (vm.count("input"))
+        if (vm.count("output-mode"))
         {
-            inputs = vm["input"].as<std::vector<std::string>>();
+            const auto &output_mode_string = vm["output-mode"].as<std::string>();
+            if (output_mode_string == "descriptive" || output_mode_string == "d")
+                output_mode = output_mode_t::DESCRIPTIVE;
+            else if (output_mode_string == "associative" || output_mode_string == "a")
+                output_mode = output_mode_t::ASSOCIATIVE;
+            else if (output_mode_string == "bare" || output_mode_string == "b")
+                output_mode = output_mode_t::BARE;
         }
+
+        if (vm.count("input"))
+            cmdline_inputs = vm["input"].as<std::vector<std::string>>();
         
         process_program_options(vm, conversion_options);
     }
@@ -142,6 +156,25 @@ int main(int argc, const char** argv)
         return EXIT_FAILURE;
     }
 
+    if (cmdline_inputs.empty())
+    {
+        for (std::string line; std::getline(std::cin, line);)
+        {
+            if (line == "") break;
+            stdin_inputs.push_back(line);
+        }
+    }
+
+    if (output_mode == output_mode_t::UNSET)
+        output_mode = stdin_inputs.empty() ? output_mode_t::DESCRIPTIVE : output_mode_t::ASSOCIATIVE;
+
+    if (cmdline_inputs.empty() && stdin_inputs.empty())
+    {
+        print_usage_information();
+        return EXIT_FAILURE;
+    }
+
+    std::vector<std::string> *inputs = !stdin_inputs.empty() ? &stdin_inputs : &cmdline_inputs;
     std::string naming_system_string;
 
     switch (conversion_options.naming_system)
@@ -159,7 +192,7 @@ int main(int argc, const char** argv)
     num::converter_c converter(conversion_options);
     std::size_t failure_count = 0;
 
-    for (const auto &input : inputs)
+    for (const auto &input : *inputs)
     {
         std::string output;
         const auto input_is_number = converter.is_number(input);
@@ -169,17 +202,20 @@ int main(int argc, const char** argv)
             const auto input_is_numeral = converter.is_numeral(input);
             if (!input_is_numeral)
             {
-                std::cout << "Input: \033[34m" << input << "\033[0m\n";
-                std::cerr << "\033[31mError: the given input is neither number nor numeral\033[0m\n\n";
+                std::cerr << "\033[31mError: \"" << input << "\" is neither number nor numeral\033[0m\n";
+                if (output_mode == output_mode_t::DESCRIPTIVE) std::cerr << "\n";
                 failure_count++;
                 continue;
             }
         }
         
-        if (input_is_number)
-            std::cout << "Number: \033[34m" << input << "\033[0m\n";
-        else
-            std::cout << "Numeral: \033[34m" << input << " \033[37m(" << naming_system_string << ")\033[0m\n";
+        if (output_mode == output_mode_t::DESCRIPTIVE)
+        {
+            if (input_is_number)
+                std::cout << "Number:  \033[34m" << input << "\033[0m\n";
+            else
+                std::cout << "Numeral: \033[34m" << input << " \033[37m(" << naming_system_string << ")\033[0m\n";
+        }
         
         try
         {
@@ -187,15 +223,27 @@ int main(int argc, const char** argv)
         }
         catch (const std::exception &ex)
         {
-            std::cerr << "\033[31mError: " << ex.what() << "\033[0m\n\n";
+            std::cerr << "\033[31mError: " << ex.what() << "\033[0m\n";
+            if (output_mode == output_mode_t::DESCRIPTIVE) std::cerr << "\n";
             failure_count++;
             continue;
         }
         
-        if (input_is_number)
-            std::cout << "Numeral: \033[33m" << output << " \033[37m(" << naming_system_string << ")\033[0m\n";
-        else
-            std::cout << "Number: \033[33m" << output << "\033[0m\n";
+        if (output_mode == output_mode_t::DESCRIPTIVE)
+        {
+            if (input_is_number)
+                std::cout << "Numeral: \033[33m" << output << " \033[37m(" << naming_system_string << ")\033[0m\n\n";
+            else
+                std::cout << "Number:  \033[33m" << output << "\033[0m\n\n";
+        }
+        else if (output_mode == output_mode_t::ASSOCIATIVE)
+        {
+            std::cout << input << " = " << output << "\n";
+        }
+        else if (output_mode == output_mode_t::BARE)
+        {
+            std::cout << output << "\n";
+        }
     }
     
     return failure_count ? failure_count : EXIT_SUCCESS;
