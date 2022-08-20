@@ -1,0 +1,2 @@
+add_executable(numero_generator generator.cpp)
+target_link_libraries(numero_generator LINK_PUBLIC numero)
