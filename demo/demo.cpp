@@ -1,3 +1,4 @@
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -7,12 +8,21 @@
 
 #include <numero/numero.h>
 
+using hr_clock = std::chrono::high_resolution_clock;
+
 enum class output_mode_t
 {
-    UNSET = 0,
-    DESCRIPTIVE,
-    ASSOCIATIVE,
-    BARE
+    unset = 0,
+    descriptive,
+    associative,
+    bare
+};
+
+enum class timing_mode_t
+{
+    dont_time = 0,
+    time_total_duration,
+    time_single_durations
 };
 
 void process_program_options(const boost::program_options::variables_map &vm,
@@ -99,7 +109,8 @@ int main(int argc, const char** argv)
         
     options_description hidden_program_options("Hidden Options");
     hidden_program_options.add_options()
-        ( "debug-output", bool_switch() );
+        ( "debug-output", bool_switch() )
+        ( "timing-mode", value<std::string>() );
         
     options_description parsed_program_options;
     parsed_program_options.add(program_options).add(hidden_program_options);
@@ -111,7 +122,8 @@ int main(int argc, const char** argv)
     };
 
     std::vector<std::string> cmdline_inputs, stdin_inputs;
-    output_mode_t output_mode = output_mode_t::UNSET;
+    output_mode_t output_mode = output_mode_t::unset;
+    timing_mode_t timing_mode = timing_mode_t::dont_time;
     
     positional_options_description positional_program_options;
     positional_program_options.add("input", -1);
@@ -137,11 +149,22 @@ int main(int argc, const char** argv)
         {
             const auto &output_mode_string = vm["output-mode"].as<std::string>();
             if (output_mode_string == "descriptive" || output_mode_string == "d")
-                output_mode = output_mode_t::DESCRIPTIVE;
+                output_mode = output_mode_t::descriptive;
             else if (output_mode_string == "associative" || output_mode_string == "a")
-                output_mode = output_mode_t::ASSOCIATIVE;
+                output_mode = output_mode_t::associative;
             else if (output_mode_string == "bare" || output_mode_string == "b")
-                output_mode = output_mode_t::BARE;
+                output_mode = output_mode_t::bare;
+        }
+
+        if (vm.count("timing-mode"))
+        {
+            const auto &timing_mode_string = vm["timing-mode"].as<std::string>();
+            if (timing_mode_string == "total" || timing_mode_string == "t")
+                timing_mode = timing_mode_t::time_total_duration;
+            else if (timing_mode_string == "single" || timing_mode_string == "s")
+                timing_mode = timing_mode_t::time_single_durations;
+            else if (timing_mode_string == "dont-time" || timing_mode_string == "false" || timing_mode_string == "d")
+                timing_mode = timing_mode_t::dont_time;
         }
 
         if (vm.count("input"))
@@ -164,8 +187,8 @@ int main(int argc, const char** argv)
         }
     }
 
-    if (output_mode == output_mode_t::UNSET)
-        output_mode = stdin_inputs.empty() ? output_mode_t::DESCRIPTIVE : output_mode_t::ASSOCIATIVE;
+    if (output_mode == output_mode_t::unset)
+        output_mode = stdin_inputs.empty() ? output_mode_t::descriptive : output_mode_t::associative;
 
     if (cmdline_inputs.empty() && stdin_inputs.empty())
     {
@@ -190,9 +213,11 @@ int main(int argc, const char** argv)
 
     num::converter_c converter(conversion_options);
     std::size_t failure_count = 0;
+    int64_t total_time = 0;
 
     for (const auto &input : *inputs)
     {
+        int64_t single_time = 0;
         std::string output;
         const auto input_is_number = converter.is_number(input);
         
@@ -202,19 +227,24 @@ int main(int argc, const char** argv)
             if (!input_is_numeral)
             {
                 std::cerr << "\033[31mError: \"" << input << "\" is neither number nor numeral\033[0m\n";
-                if (output_mode == output_mode_t::DESCRIPTIVE) std::cerr << "\n";
+                if (output_mode == output_mode_t::descriptive) std::cerr << "\n";
                 failure_count++;
                 continue;
             }
         }
         
-        if (output_mode == output_mode_t::DESCRIPTIVE)
+        if (output_mode == output_mode_t::descriptive)
         {
             if (input_is_number)
                 std::cout << "Number:  \033[34m" << input << "\033[0m\n";
             else
                 std::cout << "Numeral: \033[34m" << input << " \033[37m(" << naming_system_string << ")\033[0m\n";
         }
+
+        std::chrono::system_clock::time_point before_convert, after_convert;
+        
+        if (timing_mode != timing_mode_t::dont_time)
+            before_convert = hr_clock::now();
         
         try
         {
@@ -223,27 +253,43 @@ int main(int argc, const char** argv)
         catch (const std::exception &ex)
         {
             std::cerr << "\033[31mError: " << ex.what() << "\033[0m\n";
-            if (output_mode == output_mode_t::DESCRIPTIVE) std::cerr << "\n";
+            if (output_mode == output_mode_t::descriptive) std::cerr << "\n";
             failure_count++;
             continue;
         }
+
+        if (timing_mode != timing_mode_t::dont_time)
+        {
+            after_convert = hr_clock::now();
+            single_time = std::chrono::duration_cast<std::chrono::microseconds>(after_convert - before_convert).count();
+            total_time += single_time;
+        }
         
-        if (output_mode == output_mode_t::DESCRIPTIVE)
+        if (output_mode == output_mode_t::descriptive)
         {
             if (input_is_number)
-                std::cout << "Numeral: \033[33m" << output << " \033[37m(" << naming_system_string << ")\033[0m\n\n";
+                std::cout << "Numeral: \033[33m" << output << " \033[37m(" << naming_system_string << ")\033[0m\n";
             else
-                std::cout << "Number:  \033[33m" << output << "\033[0m\n\n";
+                std::cout << "Number:  \033[33m" << output << "\033[0m\n";
         }
-        else if (output_mode == output_mode_t::ASSOCIATIVE)
+        else if (output_mode == output_mode_t::associative)
         {
             std::cout << input << " = " << output << "\n";
         }
-        else if (output_mode == output_mode_t::BARE)
+        else if (output_mode == output_mode_t::bare)
         {
             std::cout << output << "\n";
         }
+
+        if (timing_mode == timing_mode_t::time_single_durations)
+            std::cout << "   - took " << single_time << " us\n";
+
+        if (output_mode == output_mode_t::descriptive)
+            std::cout << "\n";
     }
+
+    if (timing_mode == timing_mode_t::time_total_duration)
+        std::cout << "   - took " << total_time << " us in total\n";
     
     return failure_count ? failure_count : EXIT_SUCCESS;
 }
