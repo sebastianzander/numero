@@ -22,7 +22,8 @@ enum class timing_mode_t
 {
     dont_time = 0,
     time_total_duration,
-    time_single_durations
+    time_single_durations,
+    time_all_durations
 };
 
 void process_program_options(const boost::program_options::variables_map &vm,
@@ -170,10 +171,12 @@ int main(int argc, const char** argv)
                 timing_mode = timing_mode_t::time_total_duration;
             else if (timing_mode_string == "single" || timing_mode_string == "s")
                 timing_mode = timing_mode_t::time_single_durations;
+            else if (timing_mode_string == "all" || timing_mode_string == "a")
+                timing_mode = timing_mode_t::time_all_durations;
             else
             {
                 const auto message = boost::format("\"%1%\" is not a valid timing mode. Supported timing "
-                                                   "modes are 'total' and 'single'.")
+                                                   "modes are 'total', 'single' and 'all'.")
                                                    % timing_mode_string;
                 throw std::invalid_argument(message.str());
             }
@@ -293,14 +296,14 @@ int main(int argc, const char** argv)
             std::cout << output << "\n";
         }
 
-        if (timing_mode == timing_mode_t::time_single_durations)
+        if (timing_mode == timing_mode_t::time_single_durations || timing_mode == timing_mode_t::time_all_durations)
             std::cout << "   - took " << single_time << " us\n";
 
         if (output_mode == output_mode_t::descriptive)
             std::cout << "\n";
     }
 
-    if (timing_mode == timing_mode_t::time_total_duration)
+    if (timing_mode == timing_mode_t::time_total_duration || timing_mode == timing_mode_t::time_all_durations)
         std::cout << "   - took " << total_time << " us in total\n";
     
     return failure_count ? failure_count : EXIT_SUCCESS;
