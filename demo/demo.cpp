@@ -35,7 +35,7 @@ void process_program_options(const boost::program_options::variables_map &vm,
         else
         {
             const auto message = boost::format("\"%1%\" is not a valid number naming system. "
-                                               "Supported naming systems are \"short-scale\" and \"long-scale\".")
+                                               "Supported naming systems are 'short-scale' and 'long-scale'.")
                                                % naming_system;
             throw std::logic_error(message.str());
         }
@@ -81,20 +81,20 @@ int main(int argc, const char** argv)
         ( "input,i", value<std::vector<std::string>>()->multitoken(),
           "Input value (either number or numeral)" )
         ( "output-mode,o", value<std::string>(),
-          "Either \"descriptive\", \"associative\" or \"bare\"" )
+          "Either 'descriptive', 'associative' or 'bare'" )
         ( "naming-system,s", value<std::string>()->default_value("short-scale"),
-          "Number naming system; either \"short-scale\" (\"SS\") or \"long-scale\" (\"LS\")" )
+          "Number naming system; either 'short-scale' ('SS') or 'long-scale' ('LS')" )
         ( "language,l", value<std::string>()->default_value("en-us"),
           "ISO 639-1 standard language code for conversion to numerals" )
         ( "use-scientific-notation", value<bool>()->default_value(false),
           "Uses scientific notation if applicable in conversion to numbers" )
-        ( "use-thousands-separator", value<bool>()->default_value(true),
+        ( "use-thousands-separator,t", value<bool>()->default_value(true),
           "Uses thousands separators in conversion to numbers" )
-        ( "force-leading-zero", value<bool>()->default_value(true),
+        ( "force-leading-zero,z", value<bool>()->default_value(true),
           "Forces a leading zero in conversion to decimal numbers if the integral part of a number is effectively zero" )
-        ( "thousands-separator-symbol", value<char>(),
+        ( "thousands-separator-symbol,T", value<char>(),
           "Thousands separator symbol" )
-        ( "decimal-separator-symbol", value<char>(),
+        ( "decimal-separator-symbol,D", value<char>(),
           "Decimal separator symbol" );
         
     options_description hidden_program_options("Hidden Options");
