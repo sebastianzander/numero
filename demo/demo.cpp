@@ -154,6 +154,13 @@ int main(int argc, const char** argv)
                 output_mode = output_mode_t::associative;
             else if (output_mode_string == "bare" || output_mode_string == "b")
                 output_mode = output_mode_t::bare;
+            else
+            {
+                const auto message = boost::format("\"%1%\" is not a valid output mode. Supported output "
+                                                   "modes are 'descriptive', 'associative' and 'bare'.")
+                                                   % output_mode_string;
+                throw std::invalid_argument(message.str());
+            }
         }
 
         if (vm.count("timing-mode"))
@@ -163,8 +170,13 @@ int main(int argc, const char** argv)
                 timing_mode = timing_mode_t::time_total_duration;
             else if (timing_mode_string == "single" || timing_mode_string == "s")
                 timing_mode = timing_mode_t::time_single_durations;
-            else if (timing_mode_string == "dont-time" || timing_mode_string == "false" || timing_mode_string == "d")
-                timing_mode = timing_mode_t::dont_time;
+            else
+            {
+                const auto message = boost::format("\"%1%\" is not a valid timing mode. Supported timing "
+                                                   "modes are 'total' and 'single'.")
+                                                   % timing_mode_string;
+                throw std::invalid_argument(message.str());
+            }
         }
 
         if (vm.count("input"))

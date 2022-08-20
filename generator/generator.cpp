@@ -95,7 +95,11 @@ int main(int argc, const char** argv)
         }
 
         if (vm.count("count"))
+        {
             count = vm["count"].as<int>();
+            if (count < 1)
+                throw std::invalid_argument("count must not be zero or less");
+        }
         else
             throw std::invalid_argument("the option '--count' is required but missing");
 
@@ -111,7 +115,7 @@ int main(int argc, const char** argv)
                 const auto message = boost::format("\"%1%\" is not a valid generation mode. "
                                                    "Supported generation modes are 'number' and 'numeral'.")
                                                    % generation_mode_string;
-                throw std::logic_error(message.str());
+                throw std::invalid_argument(message.str());
             }
         }
 
@@ -129,7 +133,7 @@ int main(int argc, const char** argv)
                 const auto message = boost::format("\"%1%\" is not a valid number naming system. "
                                                    "Supported naming systems are 'short-scale' and 'long-scale'.")
                                                    % naming_system_string;
-                throw std::logic_error(message.str());
+                throw std::invalid_argument(message.str());
             }
         }
 
@@ -137,16 +141,16 @@ int main(int argc, const char** argv)
         {
             min_places = vm["min-places"].as<int>();
             if (min_places < 1)
-                throw std::logic_error("'min-places' must at least be '1'");
+                throw std::invalid_argument("'min-places' must at least be '1'");
         }
 
         if (vm.count("max-places"))
         {
             max_places = vm["max-places"].as<int>();
             if (max_places > 303 && naming_system == naming_system_t::short_scale)
-                throw std::logic_error("'max-places' must at most be '303' in the 'short-scale' naming system");
+                throw std::invalid_argument("'max-places' must at most be '303' in the 'short-scale' naming system");
             else if (max_places > 600 && naming_system == naming_system_t::long_scale)
-                throw std::logic_error("'max-places' must at most be '600' in the 'long-scale' naming system");
+                throw std::invalid_argument("'max-places' must at most be '600' in the 'long-scale' naming system");
         }
     }
     catch (const std::exception &ex)
