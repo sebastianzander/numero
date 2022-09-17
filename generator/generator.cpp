@@ -106,9 +106,9 @@ int main(int argc, const char** argv)
         if (vm.count("generation-mode"))
         {
             const auto &generation_mode_string = vm["generation-mode"].as<std::string>();
-            if (generation_mode_string == "number" || generation_mode_string == "0")
+            if (generation_mode_string == "numbers" || generation_mode_string == "0")
                 generation_mode = generation_mode_t::number;
-            else if (generation_mode_string == "numeral" || generation_mode_string == "a")
+            else if (generation_mode_string == "numerals" || generation_mode_string == "a")
                 generation_mode = generation_mode_t::numeral;
             else
             {
