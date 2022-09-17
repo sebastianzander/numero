@@ -1,6 +1,7 @@
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include <boost/format.hpp>
@@ -15,7 +16,8 @@ enum class output_mode_t
     unset = 0,
     descriptive,
     associative,
-    bare
+    bare,
+    suppress
 };
 
 enum class timing_mode_t
@@ -25,6 +27,67 @@ enum class timing_mode_t
     time_single_durations,
     time_all_durations
 };
+
+struct conversion_t
+{
+    bool input_is_number;
+    std::string result;
+    int64_t duration;
+    bool error;
+};
+
+void convert_inputs(const std::vector<std::string> &inputs,
+                    std::vector<conversion_t> &conversions,
+                    const std::size_t start_index,
+                    const std::size_t increment,
+                    num::converter_c &converter,
+                    const output_mode_t &output_mode,
+                    const timing_mode_t &timing_mode)
+{
+    for (auto i = start_index; i < inputs.size(); i += increment)
+    {
+        const auto &input = inputs[i];
+        const auto input_is_number = converter.is_number(input);
+        auto &conversion = conversions[i];
+
+        int64_t single_time = 0;
+        std::string result;
+        
+        if (!input_is_number)
+        {
+            const auto input_is_numeral = converter.is_numeral(input);
+            if (!input_is_numeral)
+            {
+                const auto message = boost::format("\"%1%\" is neither number nor numeral.") % input;
+                conversion = { input_is_number, message.str(), single_time, true };
+                continue;
+            }
+        }
+        
+        std::chrono::system_clock::time_point before_convert, after_convert;
+        
+        if (timing_mode != timing_mode_t::dont_time)
+            before_convert = hr_clock::now();
+        
+        try
+        {
+            result = converter.convert(input);
+        }
+        catch (const std::exception &ex)
+        {
+            conversion = { input_is_number, ex.what(), single_time, true };
+            continue;
+        }
+
+        if (timing_mode != timing_mode_t::dont_time)
+        {
+            after_convert = hr_clock::now();
+            single_time = std::chrono::duration_cast<std::chrono::microseconds>(after_convert - before_convert).count();
+        }
+
+        conversion = { input_is_number, result, single_time, false };
+    }
+}
 
 void process_program_options(const boost::program_options::variables_map &vm,
                              num::conversion_options_t &conversion_options)
@@ -91,6 +154,8 @@ int main(int argc, const char** argv)
           "Help and usage information" )
         ( "input,i", value<std::vector<std::string>>()->multitoken(),
           "Input value (either number or numeral)" )
+        ( "jobs-count,j", value<std::size_t>(),
+          "Maximum number of parallel jobs for conversion" )
         ( "output-mode,o", value<std::string>(),
           "Either 'descriptive', 'associative' or 'bare'" )
         ( "naming-system,s", value<std::string>()->default_value("short-scale"),
@@ -125,6 +190,7 @@ int main(int argc, const char** argv)
     std::vector<std::string> cmdline_inputs, stdin_inputs;
     output_mode_t output_mode = output_mode_t::unset;
     timing_mode_t timing_mode = timing_mode_t::dont_time;
+    std::size_t jobs_count = 1;
     
     positional_options_description positional_program_options;
     positional_program_options.add("input", -1);
@@ -155,6 +221,8 @@ int main(int argc, const char** argv)
                 output_mode = output_mode_t::associative;
             else if (output_mode_string == "bare" || output_mode_string == "b")
                 output_mode = output_mode_t::bare;
+            else if (output_mode_string == "suppress" || output_mode_string == "s")
+                output_mode = output_mode_t::suppress;
             else
             {
                 const auto message = boost::format("\"%1%\" is not a valid output mode. Supported output "
@@ -185,6 +253,10 @@ int main(int argc, const char** argv)
         if (vm.count("input"))
             cmdline_inputs = vm["input"].as<std::vector<std::string>>();
         
+        if (vm.count("jobs-count"))
+            jobs_count = std::clamp<std::size_t>(vm["jobs-count"].as<std::size_t>(),
+                                                 1, std::thread::hardware_concurrency());
+        
         process_program_options(vm, conversion_options);
     }
     catch (const std::exception &ex)
@@ -211,8 +283,14 @@ int main(int argc, const char** argv)
         return EXIT_FAILURE;
     }
 
-    std::vector<std::string> *inputs = !stdin_inputs.empty() ? &stdin_inputs : &cmdline_inputs;
+    const auto &inputs = !stdin_inputs.empty() ? stdin_inputs : cmdline_inputs;
+    const auto threads_count = std::max<std::size_t>(1, std::min<std::size_t>(inputs.size() / 10, jobs_count));
+    
+    std::vector<conversion_t> conversions(inputs.size());
+    std::vector<std::thread> threads;
     std::string naming_system_string;
+    int64_t total_time = 0;
+    std::size_t total_failure_count = 0;
 
     switch (conversion_options.naming_system)
     {
@@ -227,84 +305,86 @@ int main(int argc, const char** argv)
     }
 
     num::converter_c converter(conversion_options);
-    std::size_t failure_count = 0;
-    int64_t total_time = 0;
-
-    for (const auto &input : *inputs)
-    {
-        int64_t single_time = 0;
-        std::string output;
-        const auto input_is_number = converter.is_number(input);
+    std::chrono::system_clock::time_point before_convert, after_convert;
         
-        if (!input_is_number)
-        {
-            const auto input_is_numeral = converter.is_numeral(input);
-            if (!input_is_numeral)
-            {
-                std::cerr << "\033[31mError: \"" << input << "\" is neither number nor numeral\033[0m\n";
-                if (output_mode == output_mode_t::descriptive) std::cerr << "\n";
-                failure_count++;
-                continue;
-            }
-        }
+    if (timing_mode != timing_mode_t::time_all_durations || timing_mode != timing_mode_t::time_total_duration)
+        before_convert = hr_clock::now();
+
+    for (std::size_t i = 0; i < threads_count; i++)
+        threads.emplace_back([&, start_index = i]() {
+            convert_inputs(inputs, conversions, start_index, threads_count, converter, output_mode, timing_mode);
+        });
+
+    for (auto &thread : threads)
+        thread.join();
+
+    if (timing_mode != timing_mode_t::time_all_durations || timing_mode != timing_mode_t::time_total_duration)
+        after_convert = hr_clock::now();
+
+    for (std::size_t i = 0; i < inputs.size(); i++)
+    {
+        const auto &input = inputs[i];
+        const auto &conversion = conversions[i];
         
         if (output_mode == output_mode_t::descriptive)
         {
-            if (input_is_number)
+            if (conversion.input_is_number)
                 std::cout << "Number:  \033[34m" << input << "\033[0m\n";
             else
                 std::cout << "Numeral: \033[34m" << input << " \033[37m(" << naming_system_string << ")\033[0m\n";
         }
-
-        std::chrono::system_clock::time_point before_convert, after_convert;
-        
-        if (timing_mode != timing_mode_t::dont_time)
-            before_convert = hr_clock::now();
-        
-        try
-        {
-            output = converter.convert(input);
-        }
-        catch (const std::exception &ex)
-        {
-            std::cerr << "\033[31mError: " << ex.what() << "\033[0m\n";
-            if (output_mode == output_mode_t::descriptive) std::cerr << "\n";
-            failure_count++;
-            continue;
-        }
-
-        if (timing_mode != timing_mode_t::dont_time)
-        {
-            after_convert = hr_clock::now();
-            single_time = std::chrono::duration_cast<std::chrono::microseconds>(after_convert - before_convert).count();
-            total_time += single_time;
-        }
         
         if (output_mode == output_mode_t::descriptive)
         {
-            if (input_is_number)
-                std::cout << "Numeral: \033[33m" << output << " \033[37m(" << naming_system_string << ")\033[0m\n";
+            if (conversion.error)
+                std::cerr << "\033[31mError: " << conversion.result << "\033[0m\n";
+            else if (conversion.input_is_number)
+                std::cout << "Numeral: \033[33m" << conversion.result << " \033[37m(" << naming_system_string << 
+                    ")\033[0m\n";
             else
-                std::cout << "Number:  \033[33m" << output << "\033[0m\n";
+                std::cout << "Number:  \033[33m" << conversion.result << "\033[0m\n";
         }
         else if (output_mode == output_mode_t::associative)
         {
-            std::cout << input << " = " << output << "\n";
+            if (conversion.error)
+                std::cerr << "\033[34m" << input << "\033[0m = \033[31mError: " << conversion.result << "\033[0m\n";
+            else
+                std::cout << "\033[34m" << input << "\033[0m = \033[33m" << conversion.result << "\033[0m\n";
         }
         else if (output_mode == output_mode_t::bare)
         {
-            std::cout << output << "\n";
+            if (conversion.error)
+                std::cerr << "\033[31mError: " << conversion.result << "\033[0m\n";
+            else
+                std::cout << "\033[33m" << conversion.result << "\033[0m\n";
         }
 
         if (timing_mode == timing_mode_t::time_single_durations || timing_mode == timing_mode_t::time_all_durations)
-            std::cout << "   - took " << single_time << " us\n";
+            std::cout << "   - took " << conversion.duration << " us\n";
 
         if (output_mode == output_mode_t::descriptive)
             std::cout << "\n";
+
+        total_time += conversion.duration;
+        
+        if (conversion.error)
+            total_failure_count++;
     }
 
     if (timing_mode == timing_mode_t::time_total_duration || timing_mode == timing_mode_t::time_all_durations)
-        std::cout << "   - took " << total_time << " us in total\n";
+    {
+        int64_t average_time = total_time / inputs.size();
+        std::cout << "   - took " << total_time << " us in absolute total (" << average_time << " us on average)\n";
+
+        if (threads_count > 1)
+        {
+            const auto total_parallel_time =
+                std::chrono::duration_cast<std::chrono::microseconds>(after_convert - before_convert).count();
+            int64_t average_parallel_time = total_parallel_time / inputs.size();
+            std::cout << "   - took " << total_parallel_time << " us in parallel total (" << average_parallel_time 
+                      << " us on average) using " << threads_count << " jobs\n";
+        }
+    }
     
-    return failure_count ? failure_count : EXIT_SUCCESS;
+    return total_failure_count ? total_failure_count : EXIT_SUCCESS;
 }
