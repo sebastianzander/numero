@@ -113,7 +113,7 @@ int main(int argc, const char** argv)
             else
             {
                 const auto message = boost::format("\"%1%\" is not a valid generation mode. "
-                                                   "Supported generation modes are 'number' and 'numeral'.")
+                                                   "Supported generation modes are 'numbers' and 'numerals'.")
                                                    % generation_mode_string;
                 throw std::invalid_argument(message.str());
             }
