@@ -171,7 +171,9 @@ int main(int argc, const char** argv)
         ( "thousands-separator-symbol,T", value<char>(),
           "Thousands separator symbol" )
         ( "decimal-separator-symbol,D", value<char>(),
-          "Decimal separator symbol" );
+          "Decimal separator symbol" )
+        ( "no-colors", bool_switch(),
+          "Does not use text color escape characters; useful when redirecting output to files" );
         
     options_description hidden_program_options("Hidden Options");
     hidden_program_options.add_options()
@@ -191,6 +193,7 @@ int main(int argc, const char** argv)
     output_mode_t output_mode = output_mode_t::unset;
     timing_mode_t timing_mode = timing_mode_t::dont_time;
     std::size_t jobs_count = 1;
+    bool use_colors = true;
     
     positional_options_description positional_program_options;
     positional_program_options.add("input", -1);
@@ -256,6 +259,9 @@ int main(int argc, const char** argv)
         if (vm.count("jobs-count"))
             jobs_count = std::clamp<std::size_t>(vm["jobs-count"].as<std::size_t>(),
                                                  1, std::thread::hardware_concurrency());
+
+        if (vm.count("no-colors"))
+            use_colors = !vm["no-colors"].as<bool>();
         
         process_program_options(vm, conversion_options);
     }
@@ -329,34 +335,45 @@ int main(int argc, const char** argv)
         if (output_mode == output_mode_t::descriptive)
         {
             if (conversion.input_is_number)
-                std::cout << "Number:  \033[34m" << input << "\033[0m\n";
+                std::cout << "Number:  " << (use_colors ? "\033[34m" : "") << input
+                          << (use_colors ? "\033[0m\n" : "\n");
             else
-                std::cout << "Numeral: \033[34m" << input << " \033[37m(" << naming_system_string << ")\033[0m\n";
+                std::cout << "Numeral: " << (use_colors ? "\033[34m" : "") << input
+                          << (use_colors ? " \033[37m(" : " (") << naming_system_string
+                          << (use_colors ? ")\033[0m\n" : ")\n");
         }
         
         if (output_mode == output_mode_t::descriptive)
         {
             if (conversion.error)
-                std::cerr << "\033[31mError: " << conversion.result << "\033[0m\n";
+                std::cerr << (use_colors ? "\033[31m" : "") << "Error: " << conversion.result
+                          << (use_colors ? "\033[0m\n" : "\n");
             else if (conversion.input_is_number)
-                std::cout << "Numeral: \033[33m" << conversion.result << " \033[37m(" << naming_system_string << 
-                    ")\033[0m\n";
+                std::cout << "Numeral: " << (use_colors ? "\033[33m" : "") << conversion.result
+                          << (use_colors ? " \033[37m(" : " (") << naming_system_string
+                          << (use_colors ? ")\033[0m\n" : ")\n");
             else
-                std::cout << "Number:  \033[33m" << conversion.result << "\033[0m\n";
+                std::cout << "Number:  " << (use_colors ? "\033[33m" : "") << conversion.result
+                          << (use_colors ? "\033[0m\n" : "\n");
         }
         else if (output_mode == output_mode_t::associative)
         {
             if (conversion.error)
-                std::cerr << "\033[34m" << input << "\033[0m = \033[31mError: " << conversion.result << "\033[0m\n";
+                std::cerr << (use_colors ? "\033[34m" : "") << input
+                          << (use_colors ? "\033[0m = \033[31mError: " : " = Error: ") << conversion.result
+                          << (use_colors ? "\033[0m\n" : "\n");
             else
-                std::cout << "\033[34m" << input << "\033[0m = \033[33m" << conversion.result << "\033[0m\n";
+                std::cout << (use_colors ? "\033[34m" : "") << input
+                          << (use_colors ? "\033[0m = \033[33m" : " = ") << conversion.result
+                          << (use_colors ? "\033[0m\n" : "\n");
         }
         else if (output_mode == output_mode_t::bare)
         {
             if (conversion.error)
-                std::cerr << "\033[31mError: " << conversion.result << "\033[0m\n";
+                std::cerr << (use_colors ? "\033[31mError: " : "Error:") << conversion.result
+                          << (use_colors ? "\033[0m\n" : "\n");
             else
-                std::cout << "\033[33m" << conversion.result << "\033[0m\n";
+                std::cout << (use_colors ? "\033[33m" : "") << conversion.result << (use_colors ? "\033[0m\n" : "\n");
         }
 
         if (timing_mode == timing_mode_t::time_single_durations || timing_mode == timing_mode_t::time_all_durations)
