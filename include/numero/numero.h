@@ -59,7 +59,7 @@ namespace num
                                   std::string &out_fractional_part, int32_t &out_exponent,
                                   bool resolve_exponent = true);
 
-        std::regex get_number_pattern_regex();
+        const std::regex &get_number_pattern_regex();
 
     private:
         std::map<int16_t, const std::regex> _number_patterns;

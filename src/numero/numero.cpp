@@ -956,7 +956,7 @@ namespace num
         get_number_pattern_regex();
     }
 
-    std::regex converter_c::get_number_pattern_regex()
+    const std::regex &converter_c::get_number_pattern_regex()
     {
         const int16_t key = _conversion_options.thousands_separator_symbol << 8 |
                             _conversion_options.decimal_separator_symbol;
@@ -971,7 +971,6 @@ namespace num
                            % std::string(1, _conversion_options.decimal_separator_symbol)).str(),
                            !_number_patterns.empty() ? static_cast<std::regex_constants::syntax_option_type>(0) : 
                                                        std::regex::optimize);
-        _number_patterns.insert({ key, pattern });
-        return pattern;
+        return (_number_patterns.insert({ key, pattern }).first)->second;
     }
 }
