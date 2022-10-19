@@ -486,6 +486,9 @@ namespace num
                 if (groups.empty() && current_group.empty())
                     current_group = "1";
                 
+                if (current_group == "0")
+                    throw std::invalid_argument("in the integral part \"zero\" is only allowed on its own.");
+                
                 if (conversion_options.debug_output)
                 {
                     std::cout << "Term: " << term << "\n";

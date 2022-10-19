@@ -205,4 +205,5 @@ BOOST_AUTO_TEST_CASE(convert_logic_errors)
     BOOST_CHECK_THROW(converter.to_number("six thousand twenty thousand ten"), std::logic_error);
     BOOST_CHECK_THROW(converter.to_number("six thousand seventeen hundred"), std::logic_error);
     BOOST_CHECK_THROW(converter.to_number("four million thousand"), std::logic_error);
+    BOOST_CHECK_THROW(converter.to_number("zero hundred"), std::logic_error);
 }
