@@ -383,6 +383,7 @@ namespace num
         std::string last_term;
         std::string last_sub_numeral;
         std::string current_sub_numeral;
+        std::string last_additive_value;
         
         uint32_t last_multiplicative_shift = 0;
         uint32_t last_group_total_multiplicative_shift = std::numeric_limits<uint32_t>::max();
@@ -468,7 +469,16 @@ namespace num
                 
                 last_term_multiplicative = false;
 
+                if (!last_additive_value.empty() && last_additive_value.size() < current_additive_value.size())
+                {
+                    const auto message = boost::format("greater value terms have to precede lower value terms. "
+                                                       "Did you mean \"%1% %2%\"?") % term % last_term;
+                    throw std::invalid_argument(message.str());
+                }
+                
                 merge_places(current_additive_value, current_group);
+
+                last_additive_value = current_additive_value;
             }
             // Process multiplicative term.
             else
@@ -501,6 +511,8 @@ namespace num
                 current_group_total_multiplicative_shift += current_multiplicative_shift;
 
                 shift_places(current_multiplicative_shift, current_group);
+
+                last_additive_value.clear();
             }
             
             last_term = term;
